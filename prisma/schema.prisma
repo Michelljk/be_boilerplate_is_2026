@@ -1,62 +1,216 @@
-// Documentación: https://www.prisma.io/docs
-//
-// La URL de conexión NO vive acá: en Prisma 7 el CLI la lee desde
-// prisma.config.ts y el runtime la recibe vía driver adapter (PrismaPg),
-// configurado en src/prisma/prisma.service.ts.
-
 generator client {
   provider = "prisma-client"
-
-  // `prisma-client-js` está deprecado. El generador nuevo exige un `output`
-  // explícito y genera dentro del proyecto en vez de node_modules.
-  // Tiene que caer dentro de src/ porque tsconfig.build.json compila
-  // únicamente ese directorio (rootDir: ./src, include: ["src"]).
   output = "../src/generated/prisma"
-
-  // Query compiler en WASM: sin binario nativo de Rust, lo que permite usar
-  // imágenes Alpine sin instalar libssl.
   engineType = "client"
-  runtime    = "nodejs"
-
-  // El proyecto es ESM puro ("type": "module" + moduleResolution nodenext),
-  // así que el cliente se genera como ESM y sus imports relativos llevan la
-  // extensión .js que tsc espera al emitir.
-  moduleFormat           = "esm"
+  runtime = "nodejs"
+  moduleFormat = "esm"
   generatedFileExtension = "ts"
-  importFileExtension    = "js"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  MIEMBRO
+  ENTRENADOR
+  RECEPCION_ADMIN
+}
+enum PlanType {
+  MONTHLY
+  QUARTERLY
+  BY_CLASSES
+}
+enum PlanStatus {
+  ACTIVO
+  INACTIVO
+}
+enum MembershipStatus {
+  VIGENTE
+  VENCIDA
+}
+enum MembershipOperation {
+  COMPRA
+  RENOVACION
+}
+enum MembershipRequestStatus {
+  PENDIENTE_PAGO
+  APLICADA
+  CANCELADA
+}
+enum PaymentConcept {
+  MEMBRESIA
+  SESION_ADICIONAL
+  SESION_PERSONAL
+}
+enum PaymentStatus {
+  PENDIENTE
+  PAGADO
+  ANULADO
+}
+enum PaymentMethod {
+  EFECTIVO
+  TARJETA
+}
+enum CheckInMembershipStatus {
+  VIGENTE
+  VENCIDA
+  SIN_MEMBRESIA
+}
+enum NotificationModule {
+  MEMBRESIAS
+  RESERVAS
+  PAGOS
+  SISTEMA
+}
+enum NotificationStatus {
+  NO_LEIDA
+  LEIDA
+}
+
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique
+  passwordHash String @map("password_hash")
+  fullName String @default("") @map("full_name")
+  memberNumber String? @unique @map("member_number")
+  role Role @default(MIEMBRO)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   refreshTokens RefreshToken[]
-
+  memberships Membership[]
+  membershipRequests MembershipRequest[]
+  payments Payment[]
+  registeredCheckIns CheckIn[] @relation("registered_checkins")
+  checkIns CheckIn[] @relation("member_checkins")
+  voidedPayments Payment[] @relation("voided_payments")
+  notifications Notification[]
   @@map("users")
 }
 
 model RefreshToken {
   id String @id @default(uuid()) @db.Uuid
-
-  // Se guarda el SHA-256 del token, nunca el token en claro: si se filtra la
-  // base, los refresh tokens emitidos no son utilizables.
   tokenHash String @unique @map("token_hash")
-
-  userId String @map("user_id") @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  expiresAt DateTime  @map("expires_at")
+  userId String @db.Uuid @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-
+  createdAt DateTime @default(now()) @map("created_at")
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model MembershipPlan {
+  id String @id @default(uuid()) @db.Uuid
+  name String @unique
+  type PlanType
+  priceUsd Decimal @db.Decimal(10, 2) @map("price_usd")
+  durationMonths Int? @map("duration_months")
+  durationDays Int? @map("duration_days")
+  classCredits Int? @map("class_credits")
+  benefits Json
+  status PlanStatus @default(ACTIVO)
+  memberships Membership[]
+  requests MembershipRequest[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+model Membership {
+  id String @id @default(uuid()) @db.Uuid
+  memberId String @db.Uuid
+  member User @relation(fields: [memberId], references: [id])
+  planId String @db.Uuid
+  plan MembershipPlan @relation(fields: [planId], references: [id])
+  startsOn DateTime @map("starts_on")
+  endsOn DateTime @map("ends_on")
+  creditsRemaining Int? @map("credits_remaining")
+  status MembershipStatus @default(VIGENTE)
+  requests MembershipRequest[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([memberId, status])
+}
+
+model MembershipRequest {
+  id String @id @default(uuid()) @db.Uuid
+  memberId String @db.Uuid
+  member User @relation(fields: [memberId], references: [id])
+  membershipId String? @db.Uuid
+  membership Membership? @relation(fields: [membershipId], references: [id])
+  planId String @db.Uuid
+  plan MembershipPlan @relation(fields: [planId], references: [id])
+  paymentId String? @unique @db.Uuid
+  payment Payment? @relation(fields: [paymentId], references: [id])
+  operation MembershipOperation
+  status MembershipRequestStatus @default(PENDIENTE_PAGO)
+  createdAt DateTime @default(now()) @map("created_at")
+  appliedAt DateTime? @map("applied_at")
+  @@index([memberId, status])
+}
+
+model Payment {
+  id String @id @default(uuid()) @db.Uuid
+  memberId String @db.Uuid
+  member User @relation(fields: [memberId], references: [id])
+  concept PaymentConcept
+  amountUsd Decimal @db.Decimal(10, 2) @map("amount_usd")
+  dueDate DateTime @map("due_date")
+  status PaymentStatus @default(PENDIENTE)
+  method PaymentMethod?
+  cardLast4 String? @map("card_last4")
+  gatewayRef String? @map("gateway_ref")
+  paidAt DateTime? @map("paid_at")
+  voidedAt DateTime? @map("voided_at")
+  voidReason String? @map("void_reason")
+  voidedById String? @db.Uuid @map("voided_by_id")
+  voidedBy User? @relation("voided_payments", fields: [voidedById], references: [id])
+  membershipRequest MembershipRequest?
+  receipt Receipt?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([status, dueDate])
+  @@index([memberId, paidAt])
+}
+
+model Receipt {
+  id String @id @default(uuid()) @db.Uuid
+  paymentId String @unique @db.Uuid
+  payment Payment @relation(fields: [paymentId], references: [id])
+  number Int @unique
+  issuedAt DateTime @default(now()) @map("issued_at")
+}
+
+model CheckIn {
+  id String @id @default(uuid()) @db.Uuid
+  memberId String @db.Uuid
+  member User @relation("member_checkins", fields: [memberId], references: [id])
+  checkedInAt DateTime @default(now()) @map("checked_in_at")
+  checkInDate DateTime @map("check_in_date")
+  membershipStatus CheckInMembershipStatus @map("membership_status")
+  expiredConfirmed Boolean @default(false) @map("expired_confirmed")
+  registeredById String @db.Uuid @map("registered_by_id")
+  registeredBy User @relation("registered_checkins", fields: [registeredById], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([memberId, checkInDate])
+  @@index([checkInDate])
+}
+
+
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+  memberId String @db.Uuid
+  member User @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  module NotificationModule
+  title String
+  message String
+  referenceId String? @db.Uuid
+  dedupeKey String? @map("dedupe_key")
+  status NotificationStatus @default(NO_LEIDA)
+  createdAt DateTime @default(now()) @map("created_at")
+  readAt DateTime? @map("read_at")
+  @@unique([memberId, dedupeKey])
+  @@index([memberId, status, createdAt])
 }
