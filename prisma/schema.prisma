@@ -31,32 +31,42 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id String @id @default(uuid())
+email String @unique
+passwordHash String @map("password_hash")
+role Role @default(MIEMBRO)
+memberNumber String? @unique @map("member_number")
+isActive Boolean @default(true) @map("is_active")
+createdAt DateTime @default(now()) @map("created_at")
+updatedAt DateTime @updatedAt @map("updated_at")
+refreshTokens RefreshToken[]
+memberships Membership[]
+templates ClassTemplate[]
+reservations ClassReservation[]
+trainerSlots TrainerSlot[]
+personalSessionsAsTrainer PersonalSession[] @relation("trainer_sessions")
+personalSessionsAsMember PersonalSession[] @relation("member_sessions")
+trainerAssignments TrainerMemberAssignment[] @relation("trainer_assignments
+memberAssignments TrainerMemberAssignment[] @relation("member_assignments")
+routinesAsTrainer TrainingRoutine[] @relation("routine_trainers")
+routinesAsMember TrainingRoutine[] @relation("routine_members")
+machinesCreated MachineMaintenance[] @relation("maintenance_creator")
+machinesClosed MachineMaintenance[] @relation("maintenance_closer")
 
-  refreshTokens RefreshToken[]
+@@map("users")
 
-  @@map("users")
 }
 
 model RefreshToken {
-  id String @id @default(uuid()) @db.Uuid
-
-  // Se guarda el SHA-256 del token, nunca el token en claro: si se filtra la
+  id String @id @default(uuid())
+   // Se guarda el SHA-256 del token, nunca el token en claro: si se filtra la
   // base, los refresh tokens emitidos no son utilizables.
-  tokenHash String @unique @map("token_hash")
-
-  userId String @map("user_id") @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-
-  @@index([userId])
-  @@map("refresh_tokens")
+tokenHash String @unique @map("token_hash")
+userId String @map("user_id")
+user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+expiresAt DateTime @map("expires_at")
+revokedAt DateTime? @map("revoked_at")
+createdAt DateTime @default(now()) @map("created_at")
+@@index([userId])
+@@map("refresh_tokens")
 }
