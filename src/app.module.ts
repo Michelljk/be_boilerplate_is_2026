@@ -18,6 +18,7 @@ import { TrainerAgendaModule } from './trainer-agenda/index.js';
 import { RoutineAssignmentModule } from './routine-assignment/index.js';
 import { RoutineQueriesModule } from './routine-queries/index.js';
 import { MachineAdministrationModule } from './machine-administration/index.js';
+import { MachineQueriesModule } from './machine-queries/index.js';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { MachineAdministrationModule } from './machine-administration/index.js';
     RoutineAssignmentModule,
     RoutineQueriesModule,
     MachineAdministrationModule,
+    MachineQueriesModule,
   ],
   providers: [
     {
