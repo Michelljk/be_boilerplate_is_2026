@@ -12,6 +12,7 @@ import { validateEnv } from '@Config';
 import { CommonModule } from './common/index.js';
 import { ClassQueriesModule } from './class-queries/index.js';
 import { ClassReservationsModule } from './class-reservations/index.js';
+import { ClassAdministrationModule } from './class-administration/index.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ClassReservationsModule } from './class-reservations/index.js';
     AuthModule,
     ClassQueriesModule,
     ClassReservationsModule,
+    ClassAdministrationModule,
   ],
   providers: [
     {
