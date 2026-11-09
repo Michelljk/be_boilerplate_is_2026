@@ -16,6 +16,7 @@ import { ClassAdministrationModule } from './class-administration/index.js';
 import { TrainerSlotsModule } from './trainer-slots/index.js';
 import { TrainerAgendaModule } from './trainer-agenda/index.js';
 import { RoutineAssignmentModule } from './routine-assignment/index.js';
+import { RoutineQueriesModule } from './routine-queries/index.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { RoutineAssignmentModule } from './routine-assignment/index.js';
     TrainerSlotsModule,
     TrainerAgendaModule,
     RoutineAssignmentModule,
+    RoutineQueriesModule,
   ],
   providers: [
     {
