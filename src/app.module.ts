@@ -7,6 +7,7 @@ import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { UsersModule } from '@Users';
 import { validateEnv } from '@Config';
+import { RolesGuard } from '@Common/guards';
 
 @Module({
   imports: [
@@ -25,8 +26,9 @@ import { validateEnv } from '@Config';
     {
       // Todo cerrado por defecto: las rutas públicas se abren con @Public().
       provide: APP_GUARD,
+      useClass: RolesGuard,
       useExisting: JwtAuthGuard,
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }
