@@ -1,81 +1,68 @@
-/**
- * Validación de variables de entorno.
- *
- * Se ejecuta durante el arranque de ConfigModule: si falta algo o tiene un
- * valor inválido, la aplicación falla de inmediato con un mensaje claro en
- * lugar de reventar más tarde con un error críptico en la primera request.
- */
-
 export interface EnvConfig {
   NODE_ENV: string;
   PORT: number;
   DATABASE_URL: string;
   JWT_SECRET: string;
-  JWT_EXPIRES_IN: string;
+  JWT_EXPIRES_IN: number;
   REFRESH_TOKEN_EXPIRES_IN_DAYS: number;
   BCRYPT_SALT_ROUNDS: number;
 }
-
-const requiredVars = ['DATABASE_URL', 'JWT_SECRET'] as const;
-
-/**
- * Lee una variable como string. process.env siempre entrega strings, pero el
- * objeto llega tipado como `unknown`, así que se valida en vez de castear.
- */
-function readString(
+function text(
   raw: Record<string, unknown>,
   key: string,
   fallback: string,
 ): string {
   const value = raw[key];
   if (value === undefined || value === '') return fallback;
-
-  if (typeof value !== 'string') {
-    throw new Error(`La variable de entorno ${key} debe ser un string.`);
-  }
+  if (typeof value !== 'string') throw new Error(`${key} debe ser una cadena.`);
   return value;
 }
-
-function readInt(
+function integer(
   raw: Record<string, unknown>,
   key: string,
   fallback: number,
+  min: number,
+  max: number,
 ): number {
   const value = raw[key];
-  if (value === undefined || value === '') return fallback;
-
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      `La variable de entorno ${key} debe ser un entero positivo.`,
-    );
-  }
+  const parsed = value === undefined || value === '' ? fallback : Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max)
+    throw new Error(`${key} debe estar entre ${min} y ${max}.`);
   return parsed;
 }
-
 export function validateEnv(raw: Record<string, unknown>): EnvConfig {
-  const missing = requiredVars.filter((key) => !raw[key]);
-  if (missing.length > 0) {
+  const databaseUrl = text(raw, 'DATABASE_URL', '');
+  if (!/^postgres(ql)?:\/\//.test(databaseUrl))
+    throw new Error('DATABASE_URL PostgreSQL es obligatoria.');
+  const secret = text(raw, 'JWT_SECRET', '');
+  if (secret.length < 32 || /cambiame|placeholder|change-me/i.test(secret))
     throw new Error(
-      `Faltan variables de entorno obligatorias: ${missing.join(', ')}. ` +
-        'Copiá .env.example a .env y completalas.',
+      'JWT_SECRET debe tener al menos 32 caracteres aleatorios y no ser un placeholder.',
     );
-  }
-
-  const jwtSecret = readString(raw, 'JWT_SECRET', '');
-  if (jwtSecret.length < 32) {
-    throw new Error(
-      'JWT_SECRET debe tener al menos 32 caracteres. Generá uno con: openssl rand -base64 32',
-    );
-  }
-
+  const ttl = text(raw, 'JWT_EXPIRES_IN', '15m');
+  const match = /^(\d+)(s|m|h|d)$/.exec(ttl);
+  if (!match)
+    throw new Error('JWT_EXPIRES_IN usa un entero seguido de s, m, h o d.');
+  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  const seconds = Number(match[1]) * units[match[2]!]!;
+  if (seconds < 60 || seconds > 86400)
+    throw new Error('El access token debe durar de 60 segundos a 24 horas.');
+  const nodeEnv = text(raw, 'NODE_ENV', 'development');
+  if (!['development', 'test', 'production'].includes(nodeEnv))
+    throw new Error('NODE_ENV inválido.');
   return {
-    NODE_ENV: readString(raw, 'NODE_ENV', 'development'),
-    PORT: readInt(raw, 'PORT', 3000),
-    DATABASE_URL: readString(raw, 'DATABASE_URL', ''),
-    JWT_SECRET: jwtSecret,
-    JWT_EXPIRES_IN: readString(raw, 'JWT_EXPIRES_IN', '15m'),
-    REFRESH_TOKEN_EXPIRES_IN_DAYS: readInt(raw, 'REFRESH_TOKEN_EXPIRES_IN_DAYS', 7),
-    BCRYPT_SALT_ROUNDS: readInt(raw, 'BCRYPT_SALT_ROUNDS', 12),
+    NODE_ENV: nodeEnv,
+    PORT: integer(raw, 'PORT', 3000, 1, 65535),
+    DATABASE_URL: databaseUrl,
+    JWT_SECRET: secret,
+    JWT_EXPIRES_IN: seconds,
+    REFRESH_TOKEN_EXPIRES_IN_DAYS: integer(
+      raw,
+      'REFRESH_TOKEN_EXPIRES_IN_DAYS',
+      7,
+      1,
+      30,
+    ),
+    BCRYPT_SALT_ROUNDS: integer(raw, 'BCRYPT_SALT_ROUNDS', 12, 10, 14),
   };
 }
