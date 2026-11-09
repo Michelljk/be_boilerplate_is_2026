@@ -13,6 +13,8 @@ import { CommonModule } from './common/index.js';
 import { ClassQueriesModule } from './class-queries/index.js';
 import { ClassReservationsModule } from './class-reservations/index.js';
 import { ClassAdministrationModule } from './class-administration/index.js';
+import { TrainerSlotsModule } from './trainer-slots/index.js';
+import { TrainerAgendaModule } from './trainer-agenda/index.js';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { ClassAdministrationModule } from './class-administration/index.js';
     ClassQueriesModule,
     ClassReservationsModule,
     ClassAdministrationModule,
+    TrainerSlotsModule,
+    TrainerAgendaModule,
   ],
   providers: [
     {
