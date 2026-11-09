@@ -15,6 +15,7 @@ import { ClassReservationsModule } from './class-reservations/index.js';
 import { ClassAdministrationModule } from './class-administration/index.js';
 import { TrainerSlotsModule } from './trainer-slots/index.js';
 import { TrainerAgendaModule } from './trainer-agenda/index.js';
+import { RoutineAssignmentModule } from './routine-assignment/index.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TrainerAgendaModule } from './trainer-agenda/index.js';
     ClassAdministrationModule,
     TrainerSlotsModule,
     TrainerAgendaModule,
+    RoutineAssignmentModule,
   ],
   providers: [
     {
