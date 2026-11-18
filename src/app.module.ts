@@ -10,6 +10,7 @@ import { UsersModule } from '@Users';
 import { validateEnv } from '@Config';
 
 import { CommonModule } from './common/index.js';
+import { ClassAttendanceModule } from './class-attendance/index.js';
 import { ClassQueriesModule } from './class-queries/index.js';
 import { ClassReservationsModule } from './class-reservations/index.js';
 import { ClassAdministrationModule } from './class-administration/index.js';
@@ -19,6 +20,13 @@ import { RoutineAssignmentModule } from './routine-assignment/index.js';
 import { RoutineQueriesModule } from './routine-queries/index.js';
 import { MachineAdministrationModule } from './machine-administration/index.js';
 import { MachineQueriesModule } from './machine-queries/index.js';
+import { MembershipsModule } from './memberships/memberships.module.js';
+import { AccessModule } from './access/access.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
+import { ProgressModule } from './progress/progress.module.js';
+import { ReviewsModule } from './reviews/reviews.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -32,6 +40,7 @@ import { MachineQueriesModule } from './machine-queries/index.js';
     HealthModule,
     UsersModule,
     AuthModule,
+    ClassAttendanceModule,
     ClassQueriesModule,
     ClassReservationsModule,
     ClassAdministrationModule,
@@ -41,6 +50,13 @@ import { MachineQueriesModule } from './machine-queries/index.js';
     RoutineQueriesModule,
     MachineAdministrationModule,
     MachineQueriesModule,
+    MembershipsModule,
+    AccessModule,
+    PaymentsModule,
+    ProgressModule,
+    ReviewsModule,
+    ReportsModule,
+    NotificationsModule,
   ],
   providers: [
     {
