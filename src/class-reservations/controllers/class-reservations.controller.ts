@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -12,8 +22,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '@Auth/decorators';
+import { ParseUUIDPipe } from '@nestjs/common';
 import type { User } from '@PrismaClient';
 import {
+  CancelClassReservationResponseDto,
   ClassReservationPageDto,
   CreateClassReservationDto,
   CreateClassReservationResponseDto,
@@ -71,5 +83,21 @@ export class ClassReservationsController {
     @Query() query: ListClassReservationsQueryDto,
   ): Promise<ClassReservationPageDto> {
     return this.service.listMine(user, query);
+  }
+
+  @Patch(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'H6. Cancelar reserva propia' })
+  @ApiOkResponse({ type: CancelClassReservationResponseDto })
+  @ApiBadRequestResponse({ description: 'ID inválido.' })
+  @ApiNotFoundResponse({
+    description: 'La reserva no existe o no pertenece al miembro.',
+  })
+  @ApiConflictResponse({ description: 'Fuera de plazo o estado no permitido.' })
+  async cancel(
+    @CurrentUser() user: User,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<CancelClassReservationResponseDto> {
+    return this.service.cancel(user, id);
   }
 }
