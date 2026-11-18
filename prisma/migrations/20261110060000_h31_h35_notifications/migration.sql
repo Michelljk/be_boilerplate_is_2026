@@ -22,10 +22,8 @@ CREATE TABLE "domain_events" (
   "dedupe_key" TEXT NOT NULL,
   "processed_at" TIMESTAMP(3),
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   CONSTRAINT "domain_events_pkey" PRIMARY KEY ("id")
 );
 
 CREATE UNIQUE INDEX "domain_events_dedupe_key_key" ON "domain_events"("dedupe_key");
-
 CREATE INDEX "domain_events_processed_at_created_at_idx" ON "domain_events"("processed_at", "created_at");
