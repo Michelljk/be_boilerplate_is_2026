@@ -52,9 +52,35 @@ routinesAsTrainer TrainingRoutine[] @relation("routine_trainers")
 routinesAsMember TrainingRoutine[] @relation("routine_members")
 machinesCreated MachineMaintenance[] @relation("maintenance_creator")
 machinesClosed MachineMaintenance[] @relation("maintenance_closer")
+  notifications Notification[]
 
 @@map("users")
 
+}
+
+enum NotificationModule {
+  MEMBRESIAS
+  RESERVAS
+  PAGOS
+  SISTEMA
+}
+
+model Notification {
+  id String @id @default(uuid())
+  memberId String @map("member_id")
+  member User @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  module NotificationModule @map("module")
+  title String
+  message String
+  referenceId String? @map("reference_id")
+  dedupeKey String? @map("dedupe_key")
+  read Boolean @default(false) @map("read")
+  readAt DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([memberId])
+  @@index([module])
+  @@map("notifications")
 }
 
 model RefreshToken {
