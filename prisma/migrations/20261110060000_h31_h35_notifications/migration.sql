@@ -11,3 +11,21 @@ CREATE TABLE "notifications" (
 CREATE UNIQUE INDEX "notifications_member_dedupe_key_key" ON "notifications"("member_id", "dedupe_key") WHERE "dedupe_key" IS NOT NULL;
 CREATE INDEX "notifications_member_created_idx" ON "notifications"("member_id", "created_at" DESC);
 CREATE INDEX "notifications_member_unread_idx" ON "notifications"("member_id", "status") WHERE "status" = 'NO_LEIDA';
+
+-- CreateTable
+CREATE TABLE "domain_events" (
+  "id" UUID NOT NULL,
+  "type" TEXT NOT NULL,
+  "aggregate_id" UUID NOT NULL,
+  "recipient_id" UUID NOT NULL,
+  "payload" JSONB NOT NULL,
+  "dedupe_key" TEXT NOT NULL,
+  "processed_at" TIMESTAMP(3),
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  CONSTRAINT "domain_events_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "domain_events_dedupe_key_key" ON "domain_events"("dedupe_key");
+
+CREATE INDEX "domain_events_processed_at_created_at_idx" ON "domain_events"("processed_at", "created_at");
