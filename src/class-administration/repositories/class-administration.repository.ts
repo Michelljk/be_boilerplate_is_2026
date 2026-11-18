@@ -336,7 +336,7 @@ export class ClassAdministrationRepository {
   ): Promise<CancellationResult> {
     return serializable(this.prisma, async (tx) => {
       await this.lockSession(tx, id);
-      const session = await tx.classSession.findUnique({ where: { id } });
+      const session = await tx.classSession.findUnique({ where: { id }, include: { classTemplate: { select: { name: true } } } });
       if (!session) throw new DomainError('NOT_FOUND', 'La sesión no existe.');
       if (session.status !== SessionStatus.PROGRAMADA) {
         throw new DomainError('CONFLICT', 'No se puede cancelar esta sesión');
@@ -395,7 +395,7 @@ export class ClassAdministrationRepository {
             type: 'CLASS_SESSION_CANCELLED',
             aggregateId: id,
             recipientId: reservation.memberId,
-            payload: { sessionId: id, reservationId: reservation.id },
+            payload: { sessionId: id, reservationId: reservation.id, className: session.classTemplate.name, startsAt: session.startsAt.toISOString(), ...(reason ? { cancelReason: reason } : {}) },
             dedupeKey: `class-session-cancelled:${id}:${reservation.memberId}`,
           },
         });
