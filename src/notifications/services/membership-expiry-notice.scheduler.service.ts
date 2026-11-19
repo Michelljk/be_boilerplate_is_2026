@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import cron from 'node-cron';
 import { PrismaService } from '@Prisma/services';
 import { PaymentStatus, Prisma } from '@PrismaClient';
 import {
@@ -6,11 +12,7 @@ import {
   EXPIRY_THRESHOLDS_DAYS,
   membershipExpiryNotice,
 } from '../domain/notification-templates.js';
-import {
-  nextRunAt,
-  parseDailyCron,
-  toCivilTime,
-} from '../domain/gym-time.js';
+import { GYM_TIME_ZONE, toCivilTime } from '../domain/gym-time.js';
 import { NotificationService } from './notification.service.js';
 
 interface ExpiringMembership {
@@ -24,16 +26,17 @@ interface ExpiringMembership {
 /**
  * Aviso de vencimiento de membresía (H31).
  *
- * Corre una vez al día a las 06:00 civiles y busca las membresas pagadas que
- * vencen justo en los umbrales de 7 y 1 día. La clave `VENC-<membresa>-<umbral>`
- * hace que reejecutar la tarea el mismo día no duplique el aviso, criterio 4 de
- * la historia.
+ * node-cron dispara una vez al día a las 06:00 civiles en la zona del
+ * gimnasio. La clave `VENC-<membresía>-<umbral>` hace idempotente una
+ * reejecución y el filtro SQL sólo considera membresías vigentes, incluidos
+ * todos los planes por clases independientemente de sus créditos restantes.
  */
 @Injectable()
-export class MembershipExpiryNoticeScheduler implements OnModuleInit, OnModuleDestroy {
+export class MembershipExpiryNoticeScheduler
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(MembershipExpiryNoticeScheduler.name);
-  private readonly schedule = parseDailyCron(EXPIRY_DAILY_CRON);
-  private timer?: NodeJS.Timeout;
+  private task?: ReturnType<typeof cron.schedule>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -41,46 +44,27 @@ export class MembershipExpiryNoticeScheduler implements OnModuleInit, OnModuleDe
   ) {}
 
   onModuleInit(): void {
-    void this.runIfDue('arranque');
-    this.arm();
+    this.task = cron.schedule(
+      EXPIRY_DAILY_CRON,
+      () => void this.runScheduled(),
+      { timezone: GYM_TIME_ZONE },
+    );
   }
 
-  onModuleDestroy(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
+  async onModuleDestroy(): Promise<void> {
+    await this.task?.stop();
+    this.task = undefined;
   }
 
-  /** Vuelve a programarse tras cada ejecución, en la zona del gimnasio. */
-  private arm(now: Date = new Date()): void {
-    const next = nextRunAt(this.schedule, now);
-    this.timer = setTimeout(() => {
-      void this.runIfDue('programada');
-      this.arm(new Date());
-    }, Math.max(1_000, next.getTime() - now.getTime()));
-    this.timer.unref();
-  }
-
-  /**
-   * En el arranque sólo se actúa si efectivamente es la hora de la tanda, para
-   * no mandar avisos fuera de ventana cuando el servicio se reinicia a media
-   * tarde.
-   */
-  private async runIfDue(reason: string): Promise<void> {
-    const now = new Date();
-    const civil = toCivilTime(now);
-    if (reason === 'arranque' && (civil.hour !== this.schedule.hour || civil.minute > this.schedule.minute)) {
-      return;
-    }
+  private async runScheduled(): Promise<void> {
     try {
-      const sent = await this.run(now);
+      const sent = await this.run();
       if (sent > 0) {
-        this.logger.log(`H31: ${sent} avisos de vencimiento enviados.`);
+        this.logger.log(`H31: ${sent} avisos de vencimiento creados.`);
       }
     } catch (error) {
       this.logger.error(
-        'H31: la tanda de avisos falló; se reintenta en la próxima ventana.',
+        'H31: la tanda de avisos falló; se intentará en la próxima ejecución programada.',
         error instanceof Error ? error.stack : String(error),
       );
     }
@@ -112,8 +96,8 @@ export class MembershipExpiryNoticeScheduler implements OnModuleInit, OnModuleDe
   }
 
   /**
-   * Membresas cuyo cobro está PAGADO y vencen en los umbrales, ignorando a
-   * quien ya renovó (criterio 3: la cobertura nueva desplaza el aviso).
+   * Membresías pagadas que siguen VIGENTE y vencen en un umbral. La membresía
+   * más nueva del miembro desplaza la anterior y evita avisos después de renovar.
    */
   private findExpiring(today: string): Promise<ExpiringMembership[]> {
     const thresholds = EXPIRY_THRESHOLDS_DAYS.map((days) => days);
@@ -129,6 +113,7 @@ export class MembershipExpiryNoticeScheduler implements OnModuleInit, OnModuleDe
       JOIN payments pay ON pay.id = m.payment_id
       WHERE pay.status = ${PaymentStatus.PAGADO}::"PaymentStatus"
         AND pay.concept = 'MEMBRESIA'
+        AND m.status = 'VIGENTE'::"MembershipStatus"
         AND m.starts_on::date <= ${today}::date
         AND m.ends_on::date - ${today}::date = ANY(${thresholds}::int[])
         AND NOT EXISTS (

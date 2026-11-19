@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentUser } from '@Auth/decorators';
-import { Roles } from '@Common/decorators';
+import { Roles } from '@Auth/decorators';
 import { GkdsService } from '../services/gkds.service.js';
 @Controller()
 export class GkdsController {

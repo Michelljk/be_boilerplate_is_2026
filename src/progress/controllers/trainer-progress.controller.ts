@@ -1,109 +1,61 @@
-
-import {
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Query,
-} from '@nestjs/common';
-
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
-  ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-
 import { CurrentUser, Roles } from '@Auth/decorators';
-import { UserRole } from '@PrismaClient';
-import type { User } from '@PrismaClient';
-
-import { TrainerProgressService } from '../services/trainer-progress.service.js';
-
-import { TrainerMemberQueryDto } from '../dto/trainer-member-query.dto.js';
-
+import { UserRole, type User } from '@PrismaClient';
+import { TrainerProgressService } from '../services/index.js';
+import {
+  MemberProgressQueryDto,
+  TrainerMemberQueryDto,
+} from '../dto/progress-query.dto.js';
 import {
   MemberProgressResponseDto,
   TrainerMembersResponseDto,
 } from '../dto/trainer-progress-response.dto.js';
 
-/**
- * H26 — Consultas de progreso para entrenadores.
- */
+/** Directorio de clientes y ficha de progreso que consume el entrenador (H26). */
 @ApiTags('Progreso de clientes')
 @ApiBearerAuth()
 @Controller('trainers/me/members')
 @Roles(UserRole.ENTRENADOR)
 export class TrainerProgressController {
-  constructor(
-    private readonly service: TrainerProgressService,
-  ) {}
+  constructor(private readonly service: TrainerProgressService) {}
 
-  /**
-   * Consulta los miembros asignados.
-   */
   @Get()
-  @ApiOperation({
-    summary: 'H26. Consultar mis miembros asignados',
-  })
-  @ApiOkResponse({
-    type: TrainerMembersResponseDto,
-  })
-  @ApiBadRequestResponse({
-    description: 'Búsqueda o paginación inválida.',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Token ausente o inválido.',
-  })
-  @ApiForbiddenResponse({
-    description: 'Solo entrenadores autorizados.',
-  })
-  async members(
+  @ApiOkResponse({ type: TrainerMembersResponseDto })
+  @ApiBadRequestResponse({ description: 'Búsqueda o paginación inválidas.' })
+  @ApiUnauthorizedResponse({ description: 'Sin autenticación.' })
+  @ApiForbiddenResponse({ description: 'Rol distinto de ENTRENADOR.' })
+  members(
     @CurrentUser() user: User,
     @Query() query: TrainerMemberQueryDto,
   ): Promise<TrainerMembersResponseDto> {
-    const page = await this.service.members(user, query);
-
-    return TrainerMembersResponseDto.fromPage(page);
+    return this.service
+      .members(user, query)
+      .then((page) => TrainerMembersResponseDto.fromPage(page));
   }
 
-  /**
-   * Consulta el progreso físico de un miembro asignado.
-   */
   @Get(':memberId/progress')
-  @ApiOperation({
-    summary: 'H26. Consultar progreso de un cliente',
-  })
-  @ApiOkResponse({
-    type: MemberProgressResponseDto,
-  })
-  @ApiBadRequestResponse({
-    description: 'Identificador de miembro inválido.',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Token ausente o inválido.',
-  })
-  @ApiForbiddenResponse({
-    description: 'Solo entrenadores autorizados.',
-  })
+  @ApiOkResponse({ type: MemberProgressResponseDto })
+  @ApiBadRequestResponse({ description: 'Identificador o rango inválidos.' })
   @ApiNotFoundResponse({
-    description:
-      'El miembro no existe o no tiene una asignación activa con el entrenador.',
+    description: 'El cliente no está asignado al entrenador.',
   })
-  async memberProgress(
+  @ApiForbiddenResponse({ description: 'Rol distinto de ENTRENADOR.' })
+  progress(
     @CurrentUser() user: User,
-    @Param('memberId', new ParseUUIDPipe({ version: '4' }))
-    memberId: string,
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+    @Query() query: MemberProgressQueryDto,
   ): Promise<MemberProgressResponseDto> {
-    const progress = await this.service.memberProgress(
-      user,
-      memberId,
-    );
-
-    return MemberProgressResponseDto.fromView(progress);
+    return this.service
+      .memberProgress(user, memberId, query)
+      .then((view) => MemberProgressResponseDto.fromView(view));
   }
 }

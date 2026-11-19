@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@Auth';
 import { PrismaModule } from '@Prisma';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { ClassReservationsController } from './controllers/index.js';
 import {
   ClassReservationReader,
@@ -9,7 +10,7 @@ import {
 import { ClassReservationsService } from './services/index.js';
 
 @Module({
-  imports: [AuthModule, PrismaModule],
+  imports: [AuthModule, PrismaModule, NotificationsModule],
   controllers: [ClassReservationsController],
   providers: [
     ClassReservationsService,

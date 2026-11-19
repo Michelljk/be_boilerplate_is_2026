@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, ValidationPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  ValidationPipe,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -71,5 +78,27 @@ export class RoutineQueriesController {
     params: RoutineIdParamsDto,
   ): Promise<RoutineDetailResponseDto> {
     return this.routineQueriesService.findById(user, params.id);
+  }
+}
+
+@ApiTags('training-routines')
+@ApiBearerAuth()
+@Roles(UserRole.ENTRENADOR)
+@Controller('trainers/me/members')
+export class TrainerRoutineQueriesController {
+  constructor(private readonly routineQueriesService: RoutineQueriesService) {}
+
+  @Get(':memberId/routines/current')
+  @ApiOperation({ summary: 'Consulta rutina vigente de un miembro asignado' })
+  @ApiOkResponse({ type: RoutineDetailResponseDto, nullable: true })
+  @ApiBadRequestResponse({ description: 'Identificador inválido.' })
+  @ApiUnauthorizedResponse({ description: 'No autenticado.' })
+  @ApiForbiddenResponse({ description: 'Rol distinto de ENTRENADOR.' })
+  @ApiNotFoundResponse({ description: 'Recurso no encontrado.' })
+  findCurrentForMember(
+    @CurrentUser() user: User,
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+  ): Promise<RoutineDetailResponseDto | null> {
+    return this.routineQueriesService.findCurrentForTrainer(user, memberId);
   }
 }

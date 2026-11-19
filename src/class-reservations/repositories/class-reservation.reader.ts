@@ -32,12 +32,12 @@ export class ClassReservationReader {
               classTemplate: {
                 select: {
                   name: true,
-                  trainer: {
-                    select: { profile: { select: { fullName: true } } },
-                  },
-                  room: { select: { name: true } },
                 },
               },
+              trainer: {
+                select: { profile: { select: { fullName: true } } },
+              },
+              room: { select: { name: true } },
             },
           },
         },
@@ -51,8 +51,8 @@ export class ClassReservationReader {
         startsAt: r.session.startsAt,
         endsAt: r.session.endsAt,
         className: r.session.classTemplate.name,
-        trainerName: r.session.classTemplate.trainer.profile?.fullName ?? '',
-        roomName: r.session.classTemplate.room.name,
+        trainerName: r.session.trainer.profile?.fullName ?? '',
+        roomName: r.session.room.name,
       })),
     };
   }

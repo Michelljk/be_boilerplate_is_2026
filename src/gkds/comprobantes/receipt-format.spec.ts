@@ -1,4 +1,3 @@
-
 import { describe, expect, it } from 'vitest';
 import {
   formatReceiptNumber,
@@ -42,15 +41,11 @@ describe('H17 - Preparación de comprobantes', () => {
   });
 
   it('rechaza miembros sin nombre', () => {
-    expect(() =>
-      prepareReceipt({ ...receipt, memberName: ' ' }),
-    ).toThrow();
+    expect(() => prepareReceipt({ ...receipt, memberName: ' ' })).toThrow();
   });
 
   it('rechaza montos inválidos', () => {
-    expect(() =>
-      prepareReceipt({ ...receipt, amountUsd: -10 }),
-    ).toThrow();
+    expect(() => prepareReceipt({ ...receipt, amountUsd: -10 })).toThrow();
   });
 
   it('conserva el estado ANULADO', () => {

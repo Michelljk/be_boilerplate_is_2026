@@ -66,20 +66,15 @@ export class TokenService {
    * Incluye detección de reúso: si llega un token que ya fue canjeado, se
    * asume que fue robado y se revoca la sesión completa del usuario.
    */
-  async rotate(refreshToken: string): Promise<{ user: User; tokens: TokenPair }> {
+  async rotate(
+    refreshToken: string,
+  ): Promise<{ user: User; tokens: TokenPair }> {
     const stored = await this.refreshTokenRepository.findByTokenHashWithUser(
       this.hashToken(refreshToken),
     );
 
     if (!stored) {
       throw new UnauthorizedException('Refresh token inválido.');
-    }
-
-    if (stored.revokedAt !== null) {
-      await this.refreshTokenRepository.revokeAllForUser(stored.userId);
-      throw new UnauthorizedException(
-        'Refresh token ya utilizado. Se cerraron todas las sesiones por seguridad.',
-      );
     }
 
     if (stored.expiresAt.getTime() <= Date.now()) {
@@ -90,11 +85,33 @@ export class TokenService {
       throw new UnauthorizedException('La cuenta está inactiva.');
     }
 
-    await this.refreshTokenRepository.revokeById(stored.id);
-
+    const payload: AccessTokenPayload = {
+      sub: stored.user.id,
+      email: stored.user.email,
+    };
+    const accessToken = await this.jwtService.signAsync(payload);
+    const nextRefreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('hex');
+    const now = new Date();
+    const outcome = await this.refreshTokenRepository.consumeAndReplace(
+      this.hashToken(refreshToken),
+      {
+        tokenHash: this.hashToken(nextRefreshToken),
+        userId: stored.user.id,
+        expiresAt: new Date(now.getTime() + this.refreshTokenTtlMs),
+      },
+      now,
+    );
+    if (outcome !== 'ok')
+      throw new UnauthorizedException(
+        'Refresh token inválido, expirado o ya utilizado.',
+      );
     return {
       user: stored.user,
-      tokens: await this.issueTokenPair(stored.user),
+      tokens: {
+        accessToken,
+        refreshToken: nextRefreshToken,
+        expiresIn: await this.getAccessTokenTtlSeconds(accessToken),
+      },
     };
   }
 

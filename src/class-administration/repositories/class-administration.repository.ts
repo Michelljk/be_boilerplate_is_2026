@@ -11,6 +11,8 @@ import { DomainError } from '@Common/errors';
 import { serializable } from '@Common/repositories';
 import { GymClock } from '@Common/time';
 import type { ClassSession, ClassTemplate, Room } from '@PrismaClient';
+import { classCancelledNotice } from '../../notifications/domain/notification-templates.js';
+import { NotificationService } from '../../notifications/services/notification.service.js';
 
 export interface TemplateWriteData {
   name: string;
@@ -83,6 +85,7 @@ export class ClassAdministrationRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clock: GymClock,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createTemplate(data: TemplateWriteData): Promise<ClassTemplate> {
@@ -106,6 +109,12 @@ export class ClassAdministrationRepository {
 
   async findTemplateById(id: string): Promise<ClassTemplate | null> {
     return this.prisma.classTemplate.findUnique({ where: { id } });
+  }
+
+  async listTemplates(): Promise<ClassTemplate[]> {
+    return this.prisma.classTemplate.findMany({
+      orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }, { name: 'asc' }],
+    });
   }
 
   async updateTemplate(
@@ -134,7 +143,7 @@ export class ClassAdministrationRepository {
           classTemplateId: id,
           startsAt: { gt: now },
           status: SessionStatus.PROGRAMADA,
-          reservations: { none: { status: ReservationStatus.CONFIRMADA } },
+          reservations: { none: {} },
         },
       });
 
@@ -225,6 +234,40 @@ export class ClassAdministrationRepository {
     });
   }
 
+  async listSessions(query: {
+    classTemplateId?: string;
+    status?: SessionStatus;
+    from?: Date;
+    to?: Date;
+    skip: number;
+    take: number;
+  }): Promise<{ rows: SessionWithDuration[]; total: number }> {
+    const where: Prisma.ClassSessionWhereInput = {
+      ...(query.classTemplateId
+        ? { classTemplateId: query.classTemplateId }
+        : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.from || query.to
+        ? {
+            startsAt: {
+              ...(query.from ? { gte: query.from } : {}),
+              ...(query.to ? { lte: query.to } : {}),
+            },
+          }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.classSession.findMany({
+        where,
+        orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+        skip: query.skip,
+        take: query.take,
+        include: { classTemplate: { select: { durationMinutes: true } } },
+      }),
+      this.prisma.classSession.count({ where }),
+    ]);
+    return { rows, total };
+  }
   async findSessionById(id: string): Promise<SessionWithDuration | null> {
     return this.prisma.classSession.findUnique({
       where: { id },
@@ -254,13 +297,14 @@ export class ClassAdministrationRepository {
           'El inicio de la sesión debe ser futuro.',
         );
       const reservations = await tx.classReservation.count({
-        where: { sessionId: id, status: ReservationStatus.CONFIRMADA },
+        where: { sessionId: id },
       });
-      if (data.capacity < reservations)
+      if (reservations > 0) {
         throw new DomainError(
           'CONFLICT',
-          'El cupo no puede ser menor que las reservas confirmadas.',
+          'No se puede editar una sesión con reservas.',
         );
+      }
       await this.assertTrainerAndRoom(
         tx,
         data.trainerId,
@@ -336,7 +380,10 @@ export class ClassAdministrationRepository {
   ): Promise<CancellationResult> {
     return serializable(this.prisma, async (tx) => {
       await this.lockSession(tx, id);
-      const session = await tx.classSession.findUnique({ where: { id }, include: { classTemplate: { select: { name: true } } } });
+      const session = await tx.classSession.findUnique({
+        where: { id },
+        include: { classTemplate: { select: { name: true } } },
+      });
       if (!session) throw new DomainError('NOT_FOUND', 'La sesión no existe.');
       if (session.status !== SessionStatus.PROGRAMADA) {
         throw new DomainError('CONFLICT', 'No se puede cancelar esta sesión');
@@ -390,15 +437,22 @@ export class ClassAdministrationRepository {
             });
           }
         }
-        await tx.domainEvent.create({
-          data: {
-            type: 'CLASS_SESSION_CANCELLED',
-            aggregateId: id,
-            recipientId: reservation.memberId,
-            payload: { sessionId: id, reservationId: reservation.id, className: session.classTemplate.name, startsAt: session.startsAt.toISOString(), ...(reason ? { cancelReason: reason } : {}) },
-            dedupeKey: `class-session-cancelled:${id}:${reservation.memberId}`,
+      }
+      if (confirmed.length > 0) {
+        const notice = classCancelledNotice(
+          id,
+          session.classTemplate.name,
+          session.startsAt,
+          reason,
+        );
+        await this.notificationService.send(
+          {
+            memberIds: confirmed.map((reservation) => reservation.memberId),
+            ...notice,
+            referenceId: id,
           },
-        });
+          tx,
+        );
       }
       return {
         session: updatedSession,

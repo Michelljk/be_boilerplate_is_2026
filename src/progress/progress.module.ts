@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ProgressController, TrainerProgressController } from './controllers/index.js';
+import {
+  ProgressController,
+  TrainerProgressController,
+} from './controllers/index.js';
 import {
   ProgressRecordRepository,
   ProgressTrainerRepository,

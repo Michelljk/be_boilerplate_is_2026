@@ -1,11 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsInt,
-  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -19,7 +18,6 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-
 
 @ValidatorConstraint({ name: 'calendarDate', async: false })
 export class CalendarDateConstraint implements ValidatorConstraintInterface {
@@ -81,18 +79,6 @@ export class CreateTrainingRoutineDto {
   @IsUUID()
   memberId!: string;
 
-  @ApiPropertyOptional({
-    minimum: 1,
-    description:
-      'Versión actual esperada para control optimista H26.',
-    example: 2,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  expectedCurrentVersion?: number;
-
-
   @ApiProperty({ minLength: 3, maxLength: 80, example: 'Fuerza tren inferior' })
   @IsString()
   @MinLength(3)
@@ -128,4 +114,18 @@ export class CreateTrainingRoutineDto {
   @ValidateNested({ each: true })
   @Type(() => CreateRoutineExerciseDto)
   exercises!: CreateRoutineExerciseDto[];
+}
+
+/**
+ * Contrato exclusivo de H26. H22 conserva CreateTrainingRoutineDto sin una
+ * versión esperada; esta variante exige control optimista para versionar.
+ */
+export class CreateTrainingRoutineVersionDto extends OmitType(
+  CreateTrainingRoutineDto,
+  ['memberId'] as const,
+) {
+  @ApiProperty({ minimum: 1, description: 'Versión vigente esperada de H26.' })
+  @IsInt()
+  @Min(1)
+  expectedCurrentVersion!: number;
 }

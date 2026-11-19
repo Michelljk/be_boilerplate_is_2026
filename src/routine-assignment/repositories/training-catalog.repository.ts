@@ -4,25 +4,6 @@ import { Prisma } from '@PrismaClient';
 @Injectable()
 export class TrainingCatalogRepository {
   constructor(private readonly prisma: PrismaService) {}
-  assignedMembers(trainerId: string) {
-    return this.prisma.trainerMemberAssignment.findMany({
-      where: {
-        trainerId,
-        status: 'ACTIVA',
-        member: { isActive: true, role: 'MIEMBRO' },
-      },
-      select: {
-        member: {
-          select: {
-            id: true,
-            profile: { select: { fullName: true } },
-            memberProfile: { select: { memberNumber: true } },
-          },
-        },
-      },
-      orderBy: { memberId: 'asc' },
-    });
-  }
   exercises(page: number, pageSize: number) {
     return this.prisma.$transaction(
       async (tx) => {

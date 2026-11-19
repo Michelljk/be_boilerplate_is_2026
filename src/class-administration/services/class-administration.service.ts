@@ -55,6 +55,47 @@ export class ClassAdministrationService {
     private readonly clock: GymClock,
   ) {}
 
+  async listSessions(
+    query: import('../dto/index.js').AdminClassSessionsQueryDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 50
+    )
+      throw new DomainError('INVALID', 'La paginación no es válida.');
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+    if (
+      (from && Number.isNaN(from.getTime())) ||
+      (to && Number.isNaN(to.getTime())) ||
+      (from && to && from > to)
+    )
+      throw new DomainError('INVALID', 'El rango de fechas no es válido.');
+    const result = await this.repository.listSessions({
+      classTemplateId: query.classTemplateId,
+      status: query.status,
+      from,
+      to,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { ...result, page, pageSize };
+  }
+  async getSession(id: string): Promise<SessionWithDuration> {
+    this.assertUuid(id, 'La sesión no existe.');
+    const session = await this.repository.findSessionById(id);
+    if (!session) throw new DomainError('NOT_FOUND', 'La sesión no existe.');
+    return session;
+  }
+  listTemplates(): Promise<ClassTemplate[]> {
+    return this.repository.listTemplates();
+  }
+
   async createTemplate(dto: CreateClassTemplateDto): Promise<ClassTemplate> {
     if (!dto) throw new DomainError('INVALID', 'El body es obligatorio.');
     this.assertInputShape(dto, CREATE_TEMPLATE_KEYS);

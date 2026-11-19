@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   HttpCode,
+  Get,
+  Query,
   HttpStatus,
   Param,
   Patch,
@@ -14,11 +16,14 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiForbiddenResponse,
+  ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '@Auth/decorators';
-import { MachineStatus, type User } from '@PrismaClient';
+import type { User } from '@PrismaClient';
 import { MachineAdministrationService } from '../services/index.js';
 import {
   ChangeMachineStatusDto,
@@ -27,6 +32,8 @@ import {
   CompleteMaintenanceParamsDto,
   CompleteMaintenanceResponseDto,
   MachineIdParamsDto,
+  MaintenanceHistoryQueryDto,
+  MaintenanceHistoryResponseDto,
   OpenMaintenanceDto,
   OpenMaintenanceResponseDto,
 } from '../dto/index.js';
@@ -37,6 +44,23 @@ import {
 export class MachineAdministrationController {
   constructor(private readonly service: MachineAdministrationService) {}
 
+  @Get(':id/maintenance')
+  @Roles('RECEPCION_ADMIN')
+  @ApiOperation({
+    summary:
+      'Consulta paginada del historial de mantenimiento; openOnly=true lista períodos abiertos.',
+  })
+  @ApiOkResponse({ type: MaintenanceHistoryResponseDto })
+  @ApiBadRequestResponse({ description: 'Filtro o paginación inválidos.' })
+  @ApiUnauthorizedResponse({ description: 'No autenticado.' })
+  @ApiForbiddenResponse({ description: 'Acceso denegado.' })
+  @ApiNotFoundResponse({ description: 'Máquina no encontrada.' })
+  listMaintenanceHistory(
+    @Param() params: MachineIdParamsDto,
+    @Query() query: MaintenanceHistoryQueryDto,
+  ): Promise<MaintenanceHistoryResponseDto> {
+    return this.service.listMaintenanceHistory(params.id, query);
+  }
   @Post(':id/maintenance')
   @Roles('RECEPCION_ADMIN')
   @HttpCode(HttpStatus.CREATED)

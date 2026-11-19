@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { TrainingRoutineAssignment } from '../services/routine-assignment.service.js';
 
 export class TrainingRoutineAssignmentResponseDto {
@@ -16,6 +16,9 @@ export class TrainingRoutineAssignmentResponseDto {
 
   @ApiProperty({ enum: ['VIGENTE'], example: 'VIGENTE' })
   status!: 'VIGENTE';
+
+  @ApiPropertyOptional({ enum: ['REEMPLAZADA'], example: 'REEMPLAZADA' })
+  previousVersionStatus?: 'REEMPLAZADA';
 
   @ApiProperty({ format: 'date-time' })
   assignedAt!: string;
@@ -38,6 +41,7 @@ export class TrainingRoutineAssignmentResponseDto {
     response.trainerId = value.trainerId;
     response.version = value.version;
     response.status = value.status;
+    response.previousVersionStatus = value.previousVersionStatus;
     response.assignedAt = value.assignedAt.toISOString();
     response.startsOn = value.startsOn.toISOString().slice(0, 10);
     response.endsOn = value.endsOn.toISOString().slice(0, 10);

@@ -14,7 +14,11 @@ export class ListPersonalSessionsQueryDto {
   @IsEnum(PersonalSessionStatus)
   status?: PersonalSessionStatus;
 
-  @ApiPropertyOptional({ description: 'Página 1-indexada.', minimum: 1, default: 1 })
+  @ApiPropertyOptional({
+    description: 'Página 1-indexada.',
+    minimum: 1,
+    default: 1,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -22,7 +26,8 @@ export class ListPersonalSessionsQueryDto {
   page = 1;
 
   @ApiPropertyOptional({
-    description: 'Registros por página; el PDF fija 10 y el techo del proyecto es 50.',
+    description:
+      'Registros por página; el PDF fija 10 y el techo del proyecto es 50.',
     minimum: 1,
     maximum: 50,
     default: 10,

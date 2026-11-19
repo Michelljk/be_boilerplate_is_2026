@@ -1,39 +1,33 @@
-
 import { Injectable } from '@nestjs/common';
-import { DomainError } from '@Common/errors';
-import { UserRole } from '@PrismaClient';
 import type { User } from '@PrismaClient';
-
 import { ProgressTrainerRepository } from '../repositories/progress-trainer.repository.js';
-
-import type { TrainerMemberQueryDto } from '../dto/trainer-member-query.dto.js';
-
 import type {
+  CivilRange,
   MemberProgressView,
   TrainerMemberPage,
-} from '../dto/trainer-progress-response.dto.js';
+} from '../progress-views.js';
+import type {
+  MemberProgressQueryDto,
+  TrainerMemberQueryDto,
+} from '../dto/progress-query.dto.js';
+import {
+  assertCivilRange,
+  assertTrainer,
+  assertUuid,
+} from './progress-guards.js';
 
-/**
- * H26 — Consulta de miembros asignados
- * y de su progreso físico.
- */
+/** Superficie de lectura del entrenador sobre sus clientes asignados (H26). */
 @Injectable()
 export class TrainerProgressService {
-  constructor(
-    private readonly repository: ProgressTrainerRepository,
-  ) {}
+  constructor(private readonly repo: ProgressTrainerRepository) {}
 
-  /**
-   * Consulta los miembros asignados
-   * al entrenador autenticado.
-   */
+  /** Directorio paginado con búsqueda por nombre o número de miembro. */
   async members(
     user: User,
     query: TrainerMemberQueryDto,
   ): Promise<TrainerMemberPage> {
-    this.assertTrainer(user);
-
-    return this.repository.members(
+    assertTrainer(user);
+    return this.repo.members(
       user.id,
       (query.search ?? '').trim(),
       query.page,
@@ -42,49 +36,23 @@ export class TrainerProgressService {
   }
 
   /**
-   * Consulta el progreso físico de un miembro
-   * con asignación activa.
+   * Ficha del cliente.
+   *
+   * El rango se valida igual que en H25 y la asignación se comprueba en el
+   * repositorio: si no es del entrenador o está finalizada, 404.
    */
   async memberProgress(
     user: User,
     memberId: string,
+    query: MemberProgressQueryDto,
   ): Promise<MemberProgressView> {
-    this.assertTrainer(user);
-    this.assertUuid(memberId);
-
-    return this.repository.memberProgress(
-      user.id,
-      memberId,
-    );
-  }
-
-  /**
-   * Solo entrenadores activos pueden acceder.
-   */
-  private assertTrainer(user: User): void {
-    if (
-      !user?.isActive ||
-      user.role !== UserRole.ENTRENADOR
-    ) {
-      throw new DomainError(
-        'FORBIDDEN',
-        'Acceso denegado.',
-      );
-    }
-  }
-
-  /**
-   * Valida el identificador del miembro.
-   */
-  private assertUuid(value: string): void {
-    const pattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    if (!pattern.test(value)) {
-      throw new DomainError(
-        'INVALID',
-        'Identificador inválido. field=memberId',
-      );
-    }
+    assertTrainer(user);
+    assertUuid(memberId, 'memberId');
+    assertCivilRange(query.from, query.to);
+    const filter: CivilRange = {
+      from: query.from ?? null,
+      to: query.to ?? null,
+    };
+    return this.repo.memberProgress(user.id, memberId, filter);
   }
 }

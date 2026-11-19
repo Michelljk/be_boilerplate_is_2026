@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
@@ -38,6 +38,7 @@ export class RoutineQueryDto {
     type: Number,
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt({ message: 'page debe ser un entero.' })
   @Min(1, { message: 'page debe ser mayor o igual que 1.' })
   @Transform(({ value }) => parseStrictInteger(value), { toClassOnly: true })
@@ -51,6 +52,7 @@ export class RoutineQueryDto {
     type: Number,
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt({ message: 'pageSize debe ser un entero.' })
   @Min(1, { message: 'pageSize debe ser mayor o igual que 1.' })
   @Max(50, { message: 'pageSize no puede superar 50.' })

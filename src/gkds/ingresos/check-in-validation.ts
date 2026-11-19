@@ -1,8 +1,4 @@
-
-export type MembershipStatus =
-  | 'VIGENTE'
-  | 'VENCIDA'
-  | 'SIN_MEMBRESIA';
+export type MembershipStatus = 'VIGENTE' | 'VENCIDA' | 'SIN_MEMBRESIA';
 
 export interface CheckInInput {
   memberId: string;
@@ -14,10 +10,7 @@ export interface CheckInInput {
 export interface CheckInValidationResult {
   allowed: boolean;
   code:
-    | 'OK'
-    | 'INVALID_MEMBER'
-    | 'ALREADY_CHECKED_IN'
-    | 'CONFIRMATION_REQUIRED';
+    'OK' | 'INVALID_MEMBER' | 'ALREADY_CHECKED_IN' | 'CONFIRMATION_REQUIRED';
   message: string;
   expiredConfirmed: boolean;
 }
@@ -25,13 +18,8 @@ export interface CheckInValidationResult {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function validateCheckIn(
-  input: CheckInInput,
-): CheckInValidationResult {
-  if (
-    typeof input.memberId !== 'string' ||
-    !UUID_REGEX.test(input.memberId)
-  ) {
+export function validateCheckIn(input: CheckInInput): CheckInValidationResult {
+  if (typeof input.memberId !== 'string' || !UUID_REGEX.test(input.memberId)) {
     return {
       allowed: false,
       code: 'INVALID_MEMBER',
@@ -50,9 +38,7 @@ export function validateCheckIn(
   }
 
   if (
-    !['VIGENTE', 'VENCIDA', 'SIN_MEMBRESIA'].includes(
-      input.membershipStatus,
-    )
+    !['VIGENTE', 'VENCIDA', 'SIN_MEMBRESIA'].includes(input.membershipStatus)
   ) {
     return {
       allowed: false,
@@ -62,10 +48,7 @@ export function validateCheckIn(
     };
   }
 
-  if (
-    input.membershipStatus !== 'VIGENTE' &&
-    input.confirmExpired !== true
-  ) {
+  if (input.membershipStatus !== 'VIGENTE' && input.confirmExpired !== true) {
     return {
       allowed: false,
       code: 'CONFIRMATION_REQUIRED',
@@ -80,7 +63,6 @@ export function validateCheckIn(
     code: 'OK',
     message: 'Ingreso autorizado.',
     expiredConfirmed:
-      input.membershipStatus !== 'VIGENTE' &&
-      input.confirmExpired === true,
+      input.membershipStatus !== 'VIGENTE' && input.confirmExpired === true,
   };
 }

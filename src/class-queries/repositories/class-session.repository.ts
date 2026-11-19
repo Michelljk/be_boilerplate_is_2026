@@ -6,6 +6,7 @@ import { DomainError } from '@Common/errors';
 export interface ClassSessionSearch {
   from: Date;
   toExclusive: Date;
+  notStartedAfter: Date;
   name?: string;
   roomId?: string;
   trainerId?: string;
@@ -39,8 +40,12 @@ export class ClassSessionRepository {
     query: ClassSessionSearch,
   ): Promise<ClassSessionSnapshot> {
     const where: Prisma.ClassSessionWhereInput = {
-      startsAt: { gte: query.from, lt: query.toExclusive },
-      status: { not: SessionStatus.CANCELADA },
+      startsAt: {
+        gte: query.from,
+        gt: query.notStartedAfter,
+        lt: query.toExclusive,
+      },
+      status: { equals: SessionStatus.PROGRAMADA },
       ...(query.name
         ? {
             classTemplate: {

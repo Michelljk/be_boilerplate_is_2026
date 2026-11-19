@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PaymentsRepository } from '../repositories/index.js';
 import type {
-  CardPaymentDto,
-  CollectPaymentDto,
   PaymentHistoryQueryDto,
   PaymentPendingQueryDto,
 } from '../dto/index.js';
@@ -12,10 +10,13 @@ export class PaymentsService {
   myPending(memberId: string) {
     return this.repository.myPending(memberId);
   }
-  payCard(id: string, memberId: string, body: CardPaymentDto) {
+  memberPending(memberId: string, status: string) {
+    return this.repository.memberPending(memberId, status);
+  }
+  payCard(id: string, memberId: string, body: unknown) {
     return this.repository.payCard(id, memberId, body);
   }
-  collect(id: string, actorId: string, body: CollectPaymentDto) {
+  collect(id: string, actorId: string, body: unknown) {
     return this.repository.collect(id, actorId, body);
   }
   history(memberId: string, query: PaymentHistoryQueryDto) {

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { DomainError } from '@Common/errors';
 import { serializable } from '@Common/repositories';
 import { PrismaService } from '@Prisma/services';
+import { formatGymDateTime } from '../../notifications/domain/gym-time.js';
+import { NotificationService } from '../../notifications/services/notification.service.js';
 import {
   PaymentStatus,
   PersonalSessionStatus,
@@ -9,6 +11,7 @@ import {
   SlotStatus,
   UserRole,
 } from '@PrismaClient';
+import type { NotificationModule } from '@PrismaClient';
 import { eligibleMembership } from '../../memberships/repositories/eligible-membership.js';
 import {
   SESSION_AMOUNT_USD,
@@ -34,8 +37,8 @@ const MEMBERSHIP_MESSAGE = 'Tu membresía no está vigente';
 const OVERLAP_MESSAGE = 'Ya tienes una sesión en ese horario';
 const CANCELLABLE_MESSAGE = 'La sesión ya no puede cancelarse';
 const SLOT_MISSING_MESSAGE = 'El horario ya no existe';
-const MISSING_CHARGE_MESSAGE = 'La sesión confirmada no tiene un cobro asociado.';
-
+const MISSING_CHARGE_MESSAGE =
+  'La sesión confirmada no tiene un cobro asociado.';
 
 const sessionSelect = {
   id: true,
@@ -43,12 +46,9 @@ const sessionSelect = {
   endsAt: true,
   status: true,
   trainer: {
-    select: {
-      email: true,
-    },
+    select: { profile: { select: { fullName: true } }, email: true },
   },
 } satisfies Prisma.PersonalSessionSelect;
-
 
 const bookedSelect = {
   ...sessionSelect,
@@ -65,7 +65,10 @@ type BookedRow = Prisma.PersonalSessionGetPayload<{
 /** Único punto de H10/H11 que conoce Prisma. Toda escritura usa `serializable`. */
 @Injectable()
 export class PersonalSessionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   async findFreeSlots(input: ListFreeSlotsInput): Promise<TrainerSlotOption[]> {
     await this.assertTrainerExists(input.trainerId);
@@ -106,11 +109,6 @@ export class PersonalSessionsRepository {
       await this.lockUser(tx, input.memberId);
       const slot = await this.lockSlot(tx, input.slotId);
 
-      const booked = await this.findConfirmedByMember(tx, slot.id, input.memberId);
-      if (booked) {
-        return this.toBookedRecord(booked);
-      }
-
       this.assertBookableSlot(slot, input);
       await this.assertVigenteMembership(tx, input);
       await this.assertNoOverlap(tx, input.memberId, slot);
@@ -140,6 +138,21 @@ export class PersonalSessionsRepository {
         select: bookedSelect,
       });
 
+      const when = formatGymDateTime(session.startsAt);
+      const trainerName =
+        session.trainer.profile?.fullName ?? session.trainer.email;
+      await this.notificationService.send(
+        {
+          memberIds: [input.memberId],
+          module: PERSONAL_SESSION_NOTIFICATION_MODULE,
+          title: 'Sesión personal confirmada',
+          message: `Tu sesión con ${trainerName} del ${when.date} a las ${when.time} fue confirmada.`,
+          referenceId: session.id,
+          dedupeKey: `PERS-CONF-${session.id}`,
+        },
+        tx,
+      );
+
       return this.toBookedRecord({ ...session, payment });
     });
   }
@@ -161,6 +174,18 @@ export class PersonalSessionsRepository {
 
       const slotStatus = await this.releaseSlot(tx, session.slotId);
       const paymentStatus = await this.voidPendingCharge(tx, session, input);
+      const when = formatGymDateTime(session.startsAt);
+      await this.notificationService.send(
+        {
+          memberIds: [input.memberId],
+          module: PERSONAL_SESSION_NOTIFICATION_MODULE,
+          title: 'Sesión personal cancelada',
+          message: `Tu sesión personal del ${when.date} a las ${when.time} fue cancelada.`,
+          referenceId: session.id,
+          dedupeKey: `PERS-CANCEL-${session.id}`,
+        },
+        tx,
+      );
 
       return {
         id: session.id,
@@ -228,17 +253,6 @@ export class PersonalSessionsRepository {
       throw new DomainError('NOT_FOUND', 'Sesión no encontrada.');
     }
     return session;
-  }
-
-  private async findConfirmedByMember(
-    tx: Prisma.TransactionClient,
-    slotId: string,
-    memberId: string,
-  ): Promise<BookedRow | null> {
-    return tx.personalSession.findFirst({
-      where: { slotId, memberId, status: PersonalSessionStatus.CONFIRMADA },
-      select: bookedSelect,
-    });
   }
 
   private assertBookableSlot(slot: LockedSlot, input: BookSlotInput): void {
@@ -376,7 +390,7 @@ export class PersonalSessionsRepository {
   private toSessionRecord(row: SessionRow): PersonalSessionRecord {
     return {
       id: row.id,
-      trainerName: row.trainer.email,
+      trainerName: row.trainer.profile?.fullName ?? row.trainer.email,
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       status: row.status,
@@ -398,3 +412,6 @@ export class PersonalSessionsRepository {
     };
   }
 }
+
+const PERSONAL_SESSION_NOTIFICATION_MODULE =
+  'SESIONES_PERSONALES' as NotificationModule;

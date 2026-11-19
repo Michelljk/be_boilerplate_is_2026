@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, type TransformFnParams } from 'class-transformer';
+import { Type, Transform, type TransformFnParams } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -56,6 +56,7 @@ export class MachineQueryDto {
     example: 1,
   })
   @Transform(parseInteger)
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page = 1;
@@ -69,6 +70,7 @@ export class MachineQueryDto {
     example: 20,
   })
   @Transform(parseInteger)
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(50)

@@ -6,8 +6,6 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-rom '@nestjs/common';
-
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -17,33 +15,18 @@ import {
   ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
-  OmitType,
 } from '@nestjs/swagger';
-
 import { CurrentUser, Roles } from '@Auth/decorators';
 import type { User } from '@PrismaClient';
-
 import {
-  CreateTrainingRoutineDto,
+  CreateTrainingRoutineVersionDto,
   TrainingRoutineAssignmentResponseDto,
 } from '../dto/index.js';
-
 import { RoutineAssignmentService } from '../services/index.js';
 
 /**
- * H26: utiliza los campos de creación
- * de rutina, excepto memberId.
- *
- * El identificador del miembro se recibe
- * exclusivamente desde la URL.
- */
-class CreateRoutineVersionDto extends OmitType(
-  CreateTrainingRoutineDto,
-  ['memberId'] as const,
-) {}
-
-/**
  * H26 — Versionado de rutinas de clientes.
+ * El identificador del miembro se recibe exclusivamente desde la URL.
  */
 @ApiTags('Rutinas de clientes')
 @ApiBearerAuth()
@@ -80,12 +63,10 @@ export class TrainerRoutineVersionController {
     @CurrentUser() user: User,
     @Param('memberId', new ParseUUIDPipe())
     memberId: string,
-    @Body() dto: CreateRoutineVersionDto,
+    @Body() dto: CreateTrainingRoutineVersionDto,
   ): Promise<TrainingRoutineAssignmentResponseDto> {
-    
     if (
       !Number.isSafeInteger(dto.expectedCurrentVersion) ||
-      dto.expectedCurrentVersion === undefined ||
       dto.expectedCurrentVersion < 1
     ) {
       throw new BadRequestException(
@@ -93,19 +74,11 @@ export class TrainerRoutineVersionController {
       );
     }
 
-    const input = Object.assign(
-      new CreateTrainingRoutineDto(),
-      dto,
-      { memberId },
-    );
+    const result = await this.service.assign(user, {
+      ...dto,
+      memberId,
+    });
 
-    const result = await this.service.assign(
-      user,
-      input,
-    );
-
-    return TrainingRoutineAssignmentResponseDto.fromAssignment(
-      result,
-    );
+    return TrainingRoutineAssignmentResponseDto.fromAssignment(result);
   }
 }

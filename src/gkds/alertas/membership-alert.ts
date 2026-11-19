@@ -1,8 +1,4 @@
-
-export type MembershipAccessStatus =
-  | 'VIGENTE'
-  | 'VENCIDA'
-  | 'SIN_MEMBRESIA';
+export type MembershipAccessStatus = 'VIGENTE' | 'VENCIDA' | 'SIN_MEMBRESIA';
 
 export interface MembershipAlert {
   requiresConfirmation: boolean;

@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform} from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { NotificationModule, NotificationStatus } from '@PrismaClient';
 import type { NotificationRow } from '../repositories/index.js';
 
@@ -17,16 +17,17 @@ export class NotificationQueryDto {
   module?: NotificationModule;
 
   @ApiPropertyOptional({
-    description: 'Verdadero muestra sólo las no leídas; falso las ya leídas.',
+    description:
+      'Verdadero muestra sólo las no leídas; falso u omitido muestra todas.',
     example: true,
   })
   @IsOptional()
   @Transform(({ value }) => {
-    if (value === undefined || value === null || value === '') {
-      return undefined;
-    }
-    return value === true || value === 'true' || value === '1';
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return value;
   })
+  @IsBoolean({ message: 'unread debe ser true o false.' })
   unread?: boolean;
 
   @ApiPropertyOptional({
@@ -47,7 +48,9 @@ export class NotificationQueryDto {
     maximum: 50,
   })
   @IsOptional()
-  @Transform(({ value }) => (value === '' || value == null ? 20 : Number(value)))
+  @Transform(({ value }) =>
+    value === '' || value == null ? 20 : Number(value),
+  )
   @Type(() => Number)
   @IsInt({ message: 'pageSize debe ser un entero.' })
   @Min(1, { message: 'pageSize debe ser mayor o igual que 1.' })
@@ -106,7 +109,8 @@ export class NotificationListResponseDto {
 export class MarkReadResponseDto {
   @ApiProperty({ example: true }) success!: true;
   @ApiProperty({
-    description: 'Verdadero cuando la notificación ya estaba leída (H34 criterio 6).',
+    description:
+      'Verdadero cuando la notificación ya estaba leída (H34 criterio 6).',
     example: false,
   })
   alreadyRead!: boolean;

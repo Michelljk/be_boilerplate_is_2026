@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { GymClock } from '@Common/time';
 import { PrismaModule } from '@Prisma';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import {
   PersonalSessionsController,
   TrainerAvailabilityController,
@@ -14,7 +15,7 @@ import { PersonalSessionsService } from './services/index.js';
  * `GET /trainers/:trainerId/slots`.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationsModule],
   controllers: [PersonalSessionsController, TrainerAvailabilityController],
   providers: [GymClock, PersonalSessionsRepository, PersonalSessionsService],
   exports: [PersonalSessionsService, PersonalSessionsRepository],

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, type RoutineStatus } from '@PrismaClient';
+import {
+  AssignmentStatus,
+  Prisma,
+  type RoutineStatus,
+  UserRole,
+} from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
 import { DomainError } from '@Common/errors';
 import { serializable } from '@Common/repositories';
@@ -53,6 +58,27 @@ export interface RoutineQueriesSnapshot {
 @Injectable()
 export class RoutineQueriesRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async findCurrentForTrainer(
+    trainerId: string,
+    memberId: string,
+    today: Date,
+  ): Promise<RoutineDetailRecord | null> {
+    const assignment = await this.prisma.trainerMemberAssignment.findFirst({
+      where: {
+        trainerId,
+        memberId,
+        status: AssignmentStatus.ACTIVA,
+        member: { role: UserRole.MIEMBRO, isActive: true },
+      },
+      select: { id: true },
+    });
+    if (!assignment) {
+      throw new DomainError('NOT_FOUND', 'Recurso no encontrado.');
+    }
+    const snapshot = await this.findMineSnapshot(memberId, today, 1, 1, false);
+    return snapshot.current;
+  }
 
   async findMineSnapshot(
     memberId: string,

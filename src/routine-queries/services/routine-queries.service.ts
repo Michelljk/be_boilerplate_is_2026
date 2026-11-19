@@ -68,6 +68,23 @@ export class RoutineQueriesService {
     return this.mapDetail(routine);
   }
 
+  async findCurrentForTrainer(
+    user: RoutineQueryUser,
+    memberId: string,
+  ): Promise<RoutineDetailResponseDto | null> {
+    if (user.role !== 'ENTRENADOR')
+      throw new DomainError('FORBIDDEN', 'Acceso denegado.');
+    if (!isUuid(memberId)) {
+      throw new DomainError('INVALID', 'memberId debe ser un UUID válido.');
+    }
+    const routine = await this.routineQueriesRepository.findCurrentForTrainer(
+      user.id,
+      memberId,
+      this.gymClock.dateOnly(this.gymClock.today()),
+    );
+    return routine ? this.mapDetail(routine) : null;
+  }
+
   private ensureMember(user: RoutineQueryUser): void {
     if (user.role !== 'MIEMBRO')
       throw new DomainError('FORBIDDEN', 'Acceso denegado.');

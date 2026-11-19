@@ -1,4 +1,3 @@
-
 export type PlanType = 'MONTHLY' | 'QUARTERLY' | 'BY_CLASSES';
 export type PlanStatus = 'ACTIVO' | 'INACTIVO';
 
@@ -26,10 +25,7 @@ export function validatePlanInput(data: PlanInput): void {
     throw new Error('Tipo de plan inválido.');
   }
 
-  if (
-    !Number.isFinite(data.priceUsd) ||
-    data.priceUsd < 0
-  ) {
+  if (!Number.isFinite(data.priceUsd) || data.priceUsd < 0) {
     throw new Error('El precio debe ser un número no negativo.');
   }
 
@@ -54,18 +50,14 @@ export function validatePlanInput(data: PlanInput): void {
       !Number.isInteger(data.durationDays) ||
       (data.durationDays ?? 0) < 1
     ) {
-      throw new Error(
-        'Un plan por clases requiere créditos y días válidos.',
-      );
+      throw new Error('Un plan por clases requiere créditos y días válidos.');
     }
   } else {
     if (
       !Number.isInteger(data.durationMonths) ||
       (data.durationMonths ?? 0) < 1
     ) {
-      throw new Error(
-        'La duración en meses debe ser al menos 1.',
-      );
+      throw new Error('La duración en meses debe ser al menos 1.');
     }
   }
 }

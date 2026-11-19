@@ -1,4 +1,3 @@
-
 import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
@@ -7,13 +6,13 @@ import {
 import { isCalendarDate } from '@Common/time';
 
 /**
- * Fecha civil YYYY-MM-DD del gimnasio (America/El_Salvador).
- * También rechaza fechas inexistentes como 2026-02-30.
+ * Fecha civil `YYYY-MM-DD` del día del gimnasio (America/El_Salvador).
+ *
+ * `isCalendarDate` también rechaza días inexistentes como 2026-02-30, cosa que
+ * un `@Matches` con expresión regular no puede hacer.
  */
 @ValidatorConstraint({ name: 'calendarDate', async: false })
-export class CalendarDateConstraint
-  implements ValidatorConstraintInterface
-{
+export class CalendarDateConstraint implements ValidatorConstraintInterface {
   validate(value: unknown): boolean {
     return isCalendarDate(value);
   }

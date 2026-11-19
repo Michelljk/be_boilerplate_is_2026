@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { GymController } from './gym.controller.js';
-import { GymService } from './gym.service.js';
-@Module({ controllers: [GymController], providers: [GymService] })
+// Módulo vacío conservado como punto de extensión; no está registrado en AppModule.
+@Module({})
 export class GymModule {}

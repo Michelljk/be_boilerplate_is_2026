@@ -16,6 +16,16 @@ export interface ListMachinesQuery {
   pageSize: number;
 }
 
+export interface MaintenanceHistoryQuery {
+  machineId: string;
+  openOnly?: boolean;
+  page: number;
+  pageSize: number;
+}
+export interface MaintenanceHistorySnapshot {
+  data: MachineMaintenance[];
+  total: number;
+}
 export interface OpenMaintenanceData {
   machineId: string;
   reason: string;
@@ -90,6 +100,46 @@ export class MachineAdministrationRepository {
     );
   }
 
+  async listMaintenanceHistory(
+    query: MaintenanceHistoryQuery,
+  ): Promise<MaintenanceHistorySnapshot> {
+    const where: Prisma.MachineMaintenanceWhereInput = {
+      machineId: query.machineId,
+    };
+    if (query.openOnly) where.endedAt = null;
+    return this.prisma.$transaction(
+      async (tx) => {
+        const machine = await tx.machine.findUnique({
+          where: { id: query.machineId },
+          select: { id: true },
+        });
+        if (!machine)
+          throw new DomainError('NOT_FOUND', 'Máquina no encontrada.');
+        const [data, total] = await Promise.all([
+          tx.machineMaintenance.findMany({
+            where,
+            orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+            skip: (query.page - 1) * query.pageSize,
+            take: query.pageSize,
+            select: {
+              id: true,
+              machineId: true,
+              reason: true,
+              startedAt: true,
+              endedAt: true,
+              createdById: true,
+              closedById: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          }),
+          tx.machineMaintenance.count({ where }),
+        ]);
+        return { data, total };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
   openMaintenance(data: OpenMaintenanceData): Promise<OpenMaintenanceResult> {
     return serializable(this.prisma, async (tx) => {
       await this.lockMachine(tx, data.machineId);

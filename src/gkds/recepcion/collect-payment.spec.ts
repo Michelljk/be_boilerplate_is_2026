@@ -1,9 +1,5 @@
-
 import { describe, expect, it } from 'vitest';
-import {
-  validateCollection,
-  type CollectionInput,
-} from './collect-payment.js';
+import { validateCollection, type CollectionInput } from './collect-payment.js';
 
 const payment: CollectionInput = {
   paymentId: 'aeba9980-c011-4483-bd9a-73ee6c67ebc3',
@@ -34,10 +30,10 @@ describe('H19 - Cobros en recepción', () => {
     const result = validateCollection({
       ...payment,
       method: 'TARJETA',
-      cardLast4: '4242',
+      cardLast4: '1234',
     });
 
-    expect(result.cardLast4).toBe('4242');
+    expect(result.cardLast4).toBe('1234');
   });
 
   it('rechaza una tarjeta simulada no aprobada', () => {
