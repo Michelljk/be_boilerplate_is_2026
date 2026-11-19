@@ -1,13 +1,7 @@
-
 export type PaymentConcept =
-  | 'MEMBRESIA'
-  | 'SESION_ADICIONAL'
-  | 'SESION_PERSONAL';
+  'MEMBRESIA' | 'SESION_ADICIONAL' | 'SESION_PERSONAL';
 
-export type PaymentStatus =
-  | 'PENDIENTE'
-  | 'PAGADO'
-  | 'ANULADO';
+export type PaymentStatus = 'PENDIENTE' | 'PAGADO' | 'ANULADO';
 
 export interface PaymentInput {
   concept: PaymentConcept;
@@ -18,11 +12,7 @@ export interface PaymentInput {
 export type CardResult = 'APPROVED' | 'DECLINED';
 
 export function validatePayment(payment: PaymentInput): void {
-  const concepts = [
-    'MEMBRESIA',
-    'SESION_ADICIONAL',
-    'SESION_PERSONAL',
-  ];
+  const concepts = ['MEMBRESIA', 'SESION_ADICIONAL', 'SESION_PERSONAL'];
 
   if (!concepts.includes(payment.concept)) {
     throw new Error('Concepto de pago inválido.');
