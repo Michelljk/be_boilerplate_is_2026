@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
+import { serializable } from '@Common/repositories';
 import { sortOccupancy, occupancyLabel } from '../reports-math.js';
 import { ReviewsRepository } from '../../reviews/repositories/reviews.repository.js';
 
@@ -24,7 +25,7 @@ export class ReportsRepository {
       WITH session_totals AS (
         SELECT cs.class_template_id, SUM(cs.capacity)::int AS capacity
         FROM class_sessions cs
-        WHERE (cs.starts_at AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
+        WHERE (cs.starts_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
           AND cs.status <> 'CANCELADA'
         GROUP BY cs.class_template_id
       ),
@@ -32,7 +33,7 @@ export class ReportsRepository {
         SELECT cs.class_template_id, COUNT(cr.id)::int AS reservations
         FROM class_sessions cs
         JOIN class_reservations cr ON cr.session_id = cs.id
-        WHERE (cs.starts_at AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
+        WHERE (cs.starts_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
           AND cs.status <> 'CANCELADA'
           AND cr.status = 'CONFIRMADA'
         GROUP BY cs.class_template_id
@@ -60,13 +61,26 @@ export class ReportsRepository {
 
   async income(from: string, to: string) {
     const rows = await this.prisma.$queryRaw<
-      Array<{ concept: string; totalUsd: string }>
+      Array<{ concept: string | null; totalUsd: string; isTotal: boolean }>
     >(Prisma.sql`
-      SELECT concept::text AS concept, COALESCE(SUM(amount_usd), 0)::numeric(14,2)::text AS "totalUsd"
-      FROM payments
-      WHERE status = 'PAGADO'
-        AND (paid_at AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY concept
+      WITH paid AS (
+        SELECT concept, amount_usd
+        FROM payments
+        WHERE status = 'PAGADO'
+          AND (paid_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
+      ), grouped AS (
+        SELECT concept::text AS concept,
+          COALESCE(SUM(amount_usd), 0)::numeric(14,2)::text AS "totalUsd",
+          false AS "isTotal"
+        FROM paid
+        GROUP BY concept
+        UNION ALL
+        SELECT NULL AS concept,
+          COALESCE(SUM(amount_usd), 0)::numeric(14,2)::text AS "totalUsd",
+          true AS "isTotal"
+        FROM paid
+      )
+      SELECT concept, "totalUsd", "isTotal" FROM grouped
     `);
     const concepts = [
       'MEMBRESIA',
@@ -77,15 +91,12 @@ export class ReportsRepository {
       concept,
       totalUsd: rows.find((row) => row.concept === concept)?.totalUsd ?? '0.00',
     }));
-    const total = await this.prisma.$queryRaw<
-      Array<{ totalUsd: string }>
-    >(Prisma.sql`
-      SELECT COALESCE(SUM(amount_usd), 0)::numeric(14,2)::text AS "totalUsd"
-      FROM payments
-      WHERE status = 'PAGADO'
-        AND (paid_at AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
-    `);
-    return { from, to, totalUsd: total[0]?.totalUsd ?? '0.00', byConcept };
+    return {
+      from,
+      to,
+      totalUsd: rows.find((row) => row.isTotal)?.totalUsd ?? '0.00',
+      byConcept,
+    };
   }
 
   async retention(from: string, to: string) {
@@ -99,23 +110,44 @@ export class ReportsRepository {
     >(Prisma.sql`
       WITH months AS (
         SELECT generate_series(${`${from}-01`}::date, ${`${to}-01`}::date, interval '1 month')::date AS month
-      ), expired_memberships AS (
-        SELECT m.month, mb.id, mb.member_id, mb.ends_on
+      ), valid_periods AS (
+        SELECT mp.member_id, mp.starts_on, mp.ends_on, mp.payment_id
+        FROM membership_periods mp
+        JOIN payments p
+          ON p.id = mp.payment_id
+         AND p.member_id = mp.member_id
+         AND p.status = 'PAGADO'
+         AND p.concept = 'MEMBRESIA'
+        UNION ALL
+        SELECT mb.member_id, mb.starts_on, mb.ends_on, mb.payment_id
+        FROM memberships mb
+        JOIN payments p
+          ON p.id = mb.payment_id
+         AND p.member_id = mb.member_id
+         AND p.status = 'PAGADO'
+         AND p.concept = 'MEMBRESIA'
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM membership_periods existing_period
+          WHERE existing_period.membership_id = mb.id
+        )
+      ), expired_periods AS (
+        SELECT m.month, vp.member_id, vp.ends_on
         FROM months m
-        JOIN memberships mb ON date_trunc('month', mb.ends_on)::date = m.month
-        JOIN payments p ON p.id = mb.payment_id AND p.status = 'PAGADO'
-        WHERE mb.ends_on + 30 <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/El_Salvador')::date
+        JOIN valid_periods vp
+          ON vp.ends_on >= m.month
+         AND vp.ends_on < (m.month + interval '1 month')::date
+        WHERE vp.ends_on + 30 <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/El_Salvador')::date
       ), aggregates AS (
         SELECT e.month, COUNT(*)::int AS expired,
           COUNT(*) FILTER (WHERE EXISTS (
-            SELECT 1 FROM memberships next_membership
-            JOIN payments next_payment ON next_payment.id = next_membership.payment_id
-              AND next_payment.status = 'PAGADO'
-            WHERE next_membership.member_id = e.member_id
-              AND next_membership.starts_on > e.ends_on
-              AND next_membership.starts_on <= e.ends_on + 30
+            SELECT 1
+            FROM valid_periods next_period
+            WHERE next_period.member_id = e.member_id
+              AND next_period.starts_on > e.ends_on
+              AND next_period.starts_on <= e.ends_on + 30
           ))::int AS renewed
-        FROM expired_memberships e
+        FROM expired_periods e
         GROUP BY e.month
       )
       SELECT to_char(m.month, 'YYYY-MM') AS month,
@@ -144,43 +176,46 @@ export class ReportsRepository {
     sortBy: 'rating' | 'sessions',
     order: 'asc' | 'desc',
   ) {
-    const completed = await this.prisma.$queryRaw<
-      Array<{ trainerId: string; completedSessions: number }>
-    >(Prisma.sql`
-      SELECT cs.trainer_id AS "trainerId", COUNT(*)::int AS "completedSessions"
-      FROM class_sessions cs
-      WHERE cs.status = 'COMPLETADA'
-        AND (cs.starts_at AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
-      GROUP BY cs.trainer_id
-    `);
-    const averages = await this.reviews.trainerAverages();
-    const records = averages.map((average) => ({
-      trainerId: average.trainerId,
-      name: average.name,
-      completedSessions:
-        completed.find((item) => item.trainerId === average.trainerId)
-          ?.completedSessions ?? 0,
-      averageRating: average.averageRating,
-      ratingsCount: average.reviewCount,
-    }));
-    records.sort((a, b) => {
-      const primaryA =
-        sortBy === 'rating' ? a.averageRating : a.completedSessions;
-      const primaryB =
-        sortBy === 'rating' ? b.averageRating : b.completedSessions;
-      let comparison = 0;
-      if (primaryA === null) comparison = primaryB === null ? 0 : 1;
-      else if (primaryB === null) comparison = -1;
-      else {
-        comparison = primaryA - primaryB;
-        if (order === 'desc') comparison = -comparison;
-      }
-      return (
-        comparison ||
-        b.completedSessions - a.completedSessions ||
-        a.name.localeCompare(b.name)
+    return serializable(this.prisma, async (tx) => {
+      const completed = await tx.$queryRaw<
+        Array<{ trainerId: string; completedSessions: number }>
+      >(Prisma.sql`
+        SELECT cs.trainer_id AS "trainerId", COUNT(*)::int AS "completedSessions"
+        FROM class_sessions cs
+        WHERE cs.status = 'COMPLETADA'::"SessionStatus"
+          AND (cs.starts_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY cs.trainer_id
+      `);
+      const ratings = await this.reviews.trainerAverages(tx, { from, to });
+      const completedByTrainer = new Map(
+        completed.map((row) => [row.trainerId, row.completedSessions]),
       );
+      const records = ratings.map((row) => ({
+        trainerId: row.trainerId,
+        name: row.name,
+        completedSessions: completedByTrainer.get(row.trainerId) ?? 0,
+        averageRating: row.averageRating,
+        ratingsCount: row.reviewCount,
+      }));
+      records.sort((a, b) => {
+        const primaryA =
+          sortBy === 'rating' ? a.averageRating : a.completedSessions;
+        const primaryB =
+          sortBy === 'rating' ? b.averageRating : b.completedSessions;
+        let comparison = 0;
+        if (primaryA === null) comparison = primaryB === null ? 0 : 1;
+        else if (primaryB === null) comparison = -1;
+        else {
+          comparison = primaryA - primaryB;
+          if (order === 'desc') comparison = -comparison;
+        }
+        return (
+          comparison ||
+          b.completedSessions - a.completedSessions ||
+          a.name.localeCompare(b.name)
+        );
+      });
+      return { data: records };
     });
-    return { data: records };
   }
 }
