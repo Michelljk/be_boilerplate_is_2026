@@ -13,7 +13,8 @@ export type AttendanceValue =
 
 export type ReservationState =
   | 'CONFIRMADA'
-  | 'CANCELADA';
+  | 'CANCELADA'
+  | 'CANCELADA_POR_GIMNASIO';
 
 export type SessionState =
   | 'PROGRAMADA'
