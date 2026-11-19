@@ -1,61 +1,593 @@
-// Documentación: https://www.prisma.io/docs
-//
-// La URL de conexión NO vive acá: en Prisma 7 el CLI la lee desde
-// prisma.config.ts y el runtime la recibe vía driver adapter (PrismaPg),
-// configurado en src/prisma/prisma.service.ts.
-
 generator client {
-  provider = "prisma-client"
-
-  // `prisma-client-js` está deprecado. El generador nuevo exige un `output`
-  // explícito y genera dentro del proyecto en vez de node_modules.
-  // Tiene que caer dentro de src/ porque tsconfig.build.json compila
-  // únicamente ese directorio (rootDir: ./src, include: ["src"]).
-  output = "../src/generated/prisma"
-
-  // Query compiler en WASM: sin binario nativo de Rust, lo que permite usar
-  // imágenes Alpine sin instalar libssl.
-  engineType = "client"
-  runtime    = "nodejs"
-
-  // El proyecto es ESM puro ("type": "module" + moduleResolution nodenext),
-  // así que el cliente se genera como ESM y sus imports relativos llevan la
-  // extensión .js que tsc espera al emitir.
-  moduleFormat           = "esm"
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  previewFeatures        = ["partialIndexes"]
+  engineType             = "client"
   generatedFileExtension = "ts"
   importFileExtension    = "js"
+  moduleFormat           = "esm"
+  runtime                = "nodejs"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model CheckIn {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memberId         String                  @map("member_id") @db.Uuid
+  checkedInAt      DateTime                @map("checked_in_at")
+  checkInDate      DateTime                @map("check_in_date") @db.Date
+  membershipStatus CheckInMembershipStatus @map("membership_status")
+  expiredConfirmed Boolean                 @default(false) @map("expired_confirmed")
+  registeredById   String                  @map("registered_by_id") @db.Uuid
+  createdAt        DateTime                @default(now()) @map("created_at")
+  member           User                    @relation("check_ins_member_idTousers", fields: [memberId], references: [id])
+  registeredBy     User                    @relation("check_ins_registered_by_idTousers", fields: [registeredById], references: [id])
+
+  @@unique([memberId, checkInDate])
+  @@index([checkInDate])
+  @@index([checkedInAt(sort: Desc)])
+  @@map("check_ins")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ClassReservation {
+  id                    String            @id @default(uuid()) @db.Uuid
+  sessionId             String            @map("session_id") @db.Uuid
+  memberId              String            @map("member_id") @db.Uuid
+  membershipId          String?           @map("membership_id") @db.Uuid
+  creditConsumed        Boolean           @default(false) @map("credit_consumed")
+  creditRefunded        Boolean           @default(false) @map("credit_refunded")
+  status                ReservationStatus @default(CONFIRMADA)
+  attendance            AttendanceStatus  @default(PENDIENTE)
+  cancelledAt           DateTime?         @map("cancelled_at")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  cancelledById         String?           @map("cancelled_by_id") @db.Uuid
+  attendanceUpdatedAt   DateTime?         @map("attendance_updated_at")
+  attendanceUpdatedById String?           @map("attendance_updated_by_id") @db.Uuid
+  attendanceUpdatedBy   User?             @relation("class_reservations_attendance_updated_by_idTousers", fields: [attendanceUpdatedById], references: [id])
+  cancelledBy           User?             @relation("class_reservations_cancelled_by_idTousers", fields: [cancelledById], references: [id])
+  member                User              @relation("class_reservations_member_idTousers", fields: [memberId], references: [id])
+  membership            Membership?       @relation(fields: [membershipId], references: [id])
+  session               ClassSession      @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, memberId])
+  @@index([memberId, status])
+  @@index([sessionId, status])
+  @@map("class_reservations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This table contains exclusion constraints and requires additional setup for migrations. Visit https://pris.ly/d/exclusion-constraints for more info.
+model ClassSession {
+  id              String             @id @default(uuid()) @db.Uuid
+  classTemplateId String             @map("class_template_id") @db.Uuid
+  trainerId       String             @map("trainer_id") @db.Uuid
+  roomId          String             @map("room_id") @db.Uuid
+  startsAt        DateTime           @map("starts_at")
+  endsAt          DateTime           @map("ends_at")
+  capacity        Int
+  status          SessionStatus      @default(PROGRAMADA)
+  cancelReason    String?            @map("cancel_reason") @db.VarChar(250)
+  cancelledAt     DateTime?          @map("cancelled_at")
+  cancelledById   String?            @map("cancelled_by_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  completedAt     DateTime?          @map("completed_at")
+  completedById   String?            @map("completed_by_id") @db.Uuid
+  reservations    ClassReservation[]
+  cancelledBy     User?              @relation("class_sessions_cancelled_by_idTousers", fields: [cancelledById], references: [id])
+  classTemplate   ClassTemplate      @relation(fields: [classTemplateId], references: [id])
+  completedBy     User?              @relation("class_sessions_completed_by_idTousers", fields: [completedById], references: [id])
+  room            Room               @relation(fields: [roomId], references: [id])
+  trainer         User               @relation("class_sessions_trainer_idTousers", fields: [trainerId], references: [id])
+  reviews         Review[]
+
+  @@unique([classTemplateId, startsAt])
+  @@index([startsAt, status])
+  @@index([classTemplateId, startsAt], map: "class_sessions_template_starts_at_idx")
+  @@map("class_sessions")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ClassTemplate {
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String         @db.VarChar(80)
+  trainerId       String         @map("trainer_id") @db.Uuid
+  roomId          String         @map("room_id") @db.Uuid
+  weekday         Int
+  startTime       String         @map("start_time") @db.VarChar(5)
+  durationMinutes Int            @map("duration_minutes")
+  capacity        Int
+  status          ClassStatus    @default(ACTIVA)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  sessions        ClassSession[]
+  room            Room           @relation(fields: [roomId], references: [id])
+  trainer         User           @relation(fields: [trainerId], references: [id])
+
+  @@map("class_templates")
+}
+
+model DomainEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String
+  aggregateId String    @map("aggregate_id") @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  payload     Json
+  dedupeKey   String    @unique @map("dedupe_key")
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([processedAt, createdAt])
+  @@map("domain_events")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ExerciseMark {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  progressRecordId String         @map("progress_record_id") @db.Uuid
+  exerciseId       String         @map("exercise_id") @db.Uuid
+  weightKg         Decimal        @map("weight_kg") @db.Decimal(6, 2)
+  reps             Int
+  exercise         Exercise       @relation(fields: [exerciseId], references: [id], map: "exercise_marks_exercise_fkey")
+  progressRecord   ProgressRecord @relation(fields: [progressRecordId], references: [id], onDelete: Cascade, map: "exercise_marks_record_fkey")
+
+  @@unique([progressRecordId, exerciseId], map: "exercise_marks_record_exercise_key")
+  @@map("exercise_marks")
+}
+
+model Exercise {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String            @unique @db.VarChar(80)
+  muscleGroup      String            @map("muscle_group") @db.VarChar(60)
+  isActive         Boolean           @default(true) @map("is_active")
+  exerciseMarks    ExerciseMark[]
+  routineExercises RoutineExercise[]
+
+  @@map("exercises")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model MachineMaintenance {
+  id          String    @id @default(uuid()) @db.Uuid
+  machineId   String    @unique(map: "maintenance_one_open_per_machine", where: raw("(ended_at IS NULL)")) @map("machine_id") @db.Uuid
+  reason      String    @db.VarChar(250)
+  startedAt   DateTime  @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  createdById String    @map("created_by_id") @db.Uuid
+  closedById  String?   @map("closed_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  closedBy    User?     @relation("machine_maintenances_closed_by_idTousers", fields: [closedById], references: [id])
+  createdBy   User      @relation("machine_maintenances_created_by_idTousers", fields: [createdById], references: [id])
+  machine     Machine   @relation(fields: [machineId], references: [id])
+
+  @@index([machineId, endedAt])
+  @@map("machine_maintenances")
+}
+
+model MachineStatusChange {
+  id          String        @id @default(uuid()) @db.Uuid
+  machineId   String        @map("machine_id") @db.Uuid
+  fromStatus  MachineStatus @map("from_status")
+  toStatus    MachineStatus @map("to_status")
+  reason      String        @db.VarChar(250)
+  changedById String        @map("changed_by_id") @db.Uuid
+  changedAt   DateTime      @default(now()) @map("changed_at")
+  changedBy   User          @relation(fields: [changedById], references: [id])
+  machine     Machine       @relation(fields: [machineId], references: [id])
+
+  @@index([machineId, changedAt])
+  @@map("machine_status_changes")
+}
+
+model Machine {
+  id            String                @id @default(uuid()) @db.Uuid
+  name          String                @unique @db.VarChar(80)
+  type          String                @db.VarChar(60)
+  location      String                @db.VarChar(100)
+  status        MachineStatus         @default(DISPONIBLE)
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  maintenances  MachineMaintenance?
+  statusChanges MachineStatusChange[]
+
+  @@index([status, location])
+  @@map("machines")
+}
+
+model MemberProfile {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  memberNumber String   @unique @map("member_number")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("member_profiles")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model MembershipPlan {
+  id             String              @id @default(uuid()) @db.Uuid
+  name           String              @unique @db.VarChar(80)
+  type           PlanType
+  priceUsd       Decimal             @map("price_usd") @db.Decimal(10, 2)
+  benefits       String[]
+  durationDays   Int?                @map("duration_days")
+  credits        Int?
+  status         PlanStatus          @default(ACTIVO)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  durationMonths Int?                @map("duration_months")
+  requests       MembershipRequest[]
+  memberships    Membership[]
+
+  @@map("membership_plans")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model MembershipRequest {
+  id               String         @id @default(uuid()) @db.Uuid
+  memberId         String         @map("member_id") @db.Uuid
+  membershipId     String?        @map("membership_id") @db.Uuid
+  planId           String         @map("plan_id") @db.Uuid
+  paymentId        String         @unique @map("payment_id") @db.Uuid
+  operation        String
+  status           String         @default("PENDIENTE_PAGO")
+  expectedStartsOn DateTime?      @map("expected_starts_on") @db.Date
+  expectedEndsOn   DateTime?      @map("expected_ends_on") @db.Date
+  createdById      String         @map("created_by_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at")
+  appliedAt        DateTime?      @map("applied_at")
+  createdBy        User           @relation("membership_requests_created_by_idTousers", fields: [createdById], references: [id], map: "membership_requests_creator_fkey")
+  member           User           @relation("membership_requests_member_idTousers", fields: [memberId], references: [id], map: "membership_requests_member_fkey")
+  payment          Payment        @relation(fields: [paymentId], references: [id], map: "membership_requests_payment_fkey")
+  plan             MembershipPlan @relation(fields: [planId], references: [id], map: "membership_requests_plan_fkey")
+
+  @@index([memberId, status], map: "membership_requests_member_status_idx")
+  @@map("membership_requests")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Membership {
+  id               String             @id @default(uuid()) @db.Uuid
+  memberId         String             @map("member_id") @db.Uuid
+  planId           String             @map("plan_id") @db.Uuid
+  paymentId        String             @unique @map("payment_id") @db.Uuid
+  startsOn         DateTime           @map("starts_on") @db.Date
+  endsOn           DateTime           @map("ends_on") @db.Date
+  creditsRemaining Int?               @map("credits_remaining")
+  status           MembershipStatus
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  reservations     ClassReservation[]
+  member           User               @relation(fields: [memberId], references: [id])
+  payment          Payment            @relation(fields: [paymentId], references: [id])
+  plan             MembershipPlan     @relation(fields: [planId], references: [id])
+
+  @@index([endsOn], map: "memberships_status_ends_on_idx", where: raw("(status = 'VIGENTE'::\"MembershipStatus\")"))
+  @@index([endsOn, memberId], map: "memberships_ends_on_member_idx")
+  @@index([memberId, startsOn, endsOn])
+  @@index([memberId, startsOn], map: "memberships_member_starts_on_idx")
+  @@map("memberships")
+}
+
+model Notification {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memberId    String             @map("member_id") @db.Uuid
+  module      NotificationModule
+  title       String             @db.VarChar(100)
+  message     String             @db.VarChar(500)
+  referenceId String?            @map("reference_id") @db.Uuid
+  dedupeKey   String?            @map("dedupe_key") @db.VarChar(100)
+  status      NotificationStatus @default(NO_LEIDA)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  readAt      DateTime?          @map("read_at")
+  member      User               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, dedupeKey], map: "notifications_member_dedupe_key_key", where: raw("(dedupe_key IS NOT NULL)"))
+  @@index([memberId, createdAt(sort: Desc)], map: "notifications_member_created_idx")
+  @@index([memberId, status], map: "notifications_member_unread_idx", where: raw("(status = 'NO_LEIDA'::\"NotificationStatus\")"))
+  @@map("notifications")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Payment {
+  id                String             @id @default(uuid()) @db.Uuid
+  memberId          String             @map("member_id") @db.Uuid
+  concept           PaymentConcept
+  amountUsd         Decimal            @map("amount_usd") @db.Decimal(10, 2)
+  status            PaymentStatus      @default(PENDIENTE)
+  dueDate           DateTime           @map("due_date")
+  method            PaymentMethod?
+  paidAt            DateTime?          @map("paid_at")
+  gatewayRef        String?            @map("gateway_ref")
+  cardLast4         String?            @map("card_last4") @db.VarChar(4)
+  registeredById    String?            @map("registered_by_id") @db.Uuid
+  voidReason        String?            @map("void_reason")
+  voidedAt          DateTime?          @map("voided_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  voidedById        String?            @map("voided_by_id") @db.Uuid
+  membershipRequest MembershipRequest?
+  membership        Membership?
+  member            User               @relation("payments_member_idTousers", fields: [memberId], references: [id])
+  registeredBy      User?              @relation("payments_registered_by_idTousers", fields: [registeredById], references: [id])
+  voidedBy          User?              @relation("payments_voided_by_idTousers", fields: [voidedById], references: [id])
+  personalSessions  PersonalSession[]
+  receipt           Receipt?
+
+  @@index([memberId, paidAt(sort: Desc), id], map: "payments_member_paid_at_idx")
+  @@index([status, dueDate])
+  @@index([status, paidAt])
+  @@map("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model PersonalSession {
+  id            String                @id @default(uuid()) @db.Uuid
+  slotId        String                @map("slot_id") @db.Uuid
+  trainerId     String                @map("trainer_id") @db.Uuid
+  memberId      String                @map("member_id") @db.Uuid
+  startsAt      DateTime              @map("starts_at")
+  endsAt        DateTime              @map("ends_at")
+  status        PersonalSessionStatus @default(CONFIRMADA)
+  attendance    AttendanceStatus?
+  paymentId     String?               @map("payment_id") @db.Uuid
+  cancelledAt   DateTime?             @map("cancelled_at")
+  cancelledById String?               @map("cancelled_by_id") @db.Uuid
+  completedAt   DateTime?             @map("completed_at")
+  markedById    String?               @map("marked_by_id") @db.Uuid
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  cancelledBy   User?                 @relation("personal_sessions_cancelled_by_idTousers", fields: [cancelledById], references: [id])
+  markedBy      User?                 @relation("personal_sessions_marked_by_idTousers", fields: [markedById], references: [id])
+  member        User                  @relation("personal_sessions_member_idTousers", fields: [memberId], references: [id])
+  payment       Payment?              @relation(fields: [paymentId], references: [id])
+  slot          TrainerSlot           @relation(fields: [slotId], references: [id])
+  trainer       User                  @relation("personal_sessions_trainer_idTousers", fields: [trainerId], references: [id])
+
+  @@unique([slotId], map: "personal_sessions_slot_id_key", where: raw("(status = 'CONFIRMADA'::\"PersonalSessionStatus\")"))
+  @@index([memberId, startsAt])
+  @@index([slotId], map: "personal_sessions_slot_id_idx")
+  @@index([trainerId, startsAt])
+  @@map("personal_sessions")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ProgressRecord {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memberId   String         @map("member_id") @db.Uuid
+  recordDate DateTime       @map("record_date") @db.Date
+  weightKg   Decimal        @map("weight_kg") @db.Decimal(6, 2)
+  waistCm    Decimal?       @map("waist_cm") @db.Decimal(6, 2)
+  chestCm    Decimal?       @map("chest_cm") @db.Decimal(6, 2)
+  armCm      Decimal?       @map("arm_cm") @db.Decimal(6, 2)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  marks      ExerciseMark[]
+  member     User           @relation(fields: [memberId], references: [id], map: "progress_records_member_fkey")
+
+  @@unique([memberId, recordDate], map: "progress_records_member_date_key")
+  @@index([memberId, recordDate], map: "progress_records_member_date_idx")
+  @@map("progress_records")
+}
+
+model Receipt {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId String        @unique @map("payment_id") @db.Uuid
+  number    BigInt        @unique @default(autoincrement())
+  method    PaymentMethod
+  issuedAt  DateTime      @default(now()) @map("issued_at")
+  payment   Payment       @relation(fields: [paymentId], references: [id])
+
+  @@index([number])
+  @@map("receipts")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Review {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String       @map("session_id") @db.Uuid
+  memberId  String       @map("member_id") @db.Uuid
+  rating    Int
+  comment   String?      @db.VarChar(500)
+  createdAt DateTime     @default(now()) @map("created_at")
+  member    User         @relation(fields: [memberId], references: [id])
+  session   ClassSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([memberId, sessionId], map: "reviews_member_session_key")
+  @@index([memberId, createdAt(sort: Desc)])
+  @@index([sessionId])
+  @@map("reviews")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Room {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String          @unique @db.VarChar(60)
+  capacity  Int
+  sessions  ClassSession[]
+  templates ClassTemplate[]
+
+  @@map("rooms")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model RoutineExercise {
+  id         String          @id @default(uuid()) @db.Uuid
+  routineId  String          @map("routine_id") @db.Uuid
+  exerciseId String          @map("exercise_id") @db.Uuid
+  weekday    Int
+  sets       Int
+  reps       Int
+  position   Int
+  exercise   Exercise        @relation(fields: [exerciseId], references: [id])
+  routine    TrainingRoutine @relation(fields: [routineId], references: [id])
+
+  @@unique([routineId, weekday, position])
+  @@map("routine_exercises")
+}
+
+model TrainerMemberAssignment {
+  id         String           @id @default(uuid()) @db.Uuid
+  trainerId  String           @map("trainer_id") @db.Uuid
+  memberId   String           @unique(map: "assignments_one_active_per_member", where: raw("(status = 'ACTIVA'::\"AssignmentStatus\")")) @map("member_id") @db.Uuid
+  status     AssignmentStatus @default(ACTIVA)
+  assignedAt DateTime         @default(now()) @map("assigned_at")
+  endedAt    DateTime?        @map("ended_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  member     User             @relation("trainer_member_assignments_member_idTousers", fields: [memberId], references: [id])
+  trainer    User             @relation("trainer_member_assignments_trainer_idTousers", fields: [trainerId], references: [id])
+
+  @@index([trainerId, status])
+  @@map("trainer_member_assignments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model TrainerSlot {
+  id               String            @id @default(uuid()) @db.Uuid
+  trainerId        String            @map("trainer_id") @db.Uuid
+  startsAt         DateTime          @map("starts_at")
+  endsAt           DateTime          @map("ends_at")
+  status           SlotStatus        @default(LIBRE)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  personalSessions PersonalSession[]
+  trainer          User              @relation(fields: [trainerId], references: [id])
+
+  @@unique([trainerId, startsAt])
+  @@index([startsAt, status])
+  @@map("trainer_slots")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model TrainingRoutine {
+  id         String            @id @default(uuid()) @db.Uuid
+  memberId   String            @unique(map: "routines_one_current_per_member", where: raw("(status = 'VIGENTE'::\"RoutineStatus\")")) @map("member_id") @db.Uuid
+  trainerId  String            @map("trainer_id") @db.Uuid
+  name       String            @db.VarChar(80)
+  goal       String            @db.VarChar(250)
+  version    Int
+  startsOn   DateTime          @map("starts_on") @db.Date
+  endsOn     DateTime          @map("ends_on") @db.Date
+  assignedAt DateTime          @default(now()) @map("assigned_at")
+  status     RoutineStatus     @default(VIGENTE)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  exercises  RoutineExercise[]
+  member     User              @relation("training_routines_member_idTousers", fields: [memberId], references: [id])
+  trainer    User              @relation("training_routines_trainer_idTousers", fields: [trainerId], references: [id])
+
+  @@unique([memberId, version])
+  @@index([memberId, status])
+  @@map("training_routines")
+}
+
+model UserProfile {
+  id       String  @id @default(uuid()) @db.Uuid
+  userId   String  @unique @map("user_id") @db.Uuid
+  fullName String  @map("full_name") @db.VarChar(100)
+  phone    String? @db.VarChar(20)
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
 model User {
-  id String @id @default(uuid())
-email String @unique
-passwordHash String @map("password_hash")
-role Role @default(MIEMBRO)
-memberNumber String? @unique @map("member_number")
-isActive Boolean @default(true) @map("is_active")
-createdAt DateTime @default(now()) @map("created_at")
-updatedAt DateTime @updatedAt @map("updated_at")
-refreshTokens RefreshToken[]
-memberships Membership[]
-templates ClassTemplate[]
-reservations ClassReservation[]
-trainerSlots TrainerSlot[]
-personalSessionsAsTrainer PersonalSession[] @relation("trainer_sessions")
-personalSessionsAsMember PersonalSession[] @relation("member_sessions")
-trainerAssignments TrainerMemberAssignment[] @relation("trainer_assignments")
-memberAssignments TrainerMemberAssignment[] @relation("member_assignments")
-routinesAsTrainer TrainingRoutine[] @relation("routine_trainers")
-routinesAsMember TrainingRoutine[] @relation("routine_members")
-machinesCreated MachineMaintenance[] @relation("maintenance_creator")
-machinesClosed MachineMaintenance[] @relation("maintenance_closer")
-  notifications Notification[]
+  id                        String                    @id @default(uuid()) @db.Uuid
+  email                     String                    @unique
+  passwordHash              String                    @map("password_hash")
+  isActive                  Boolean                   @default(true) @map("is_active")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+  role                      UserRole                  @default(MIEMBRO)
+  checkIns                  CheckIn[]                 @relation("check_ins_member_idTousers")
+  registeredCheckIns        CheckIn[]                 @relation("check_ins_registered_by_idTousers")
+  updatedAttendances        ClassReservation[]        @relation("class_reservations_attendance_updated_by_idTousers")
+  cancelledReservations     ClassReservation[]        @relation("class_reservations_cancelled_by_idTousers")
+  reservations              ClassReservation[]        @relation("class_reservations_member_idTousers")
+  cancelledSessions         ClassSession[]            @relation("class_sessions_cancelled_by_idTousers")
+  completedSessions         ClassSession[]            @relation("class_sessions_completed_by_idTousers")
+  sessions                  ClassSession[]            @relation("class_sessions_trainer_idTousers")
+  templates                 ClassTemplate[]
+  machinesClosed            MachineMaintenance[]      @relation("machine_maintenances_closed_by_idTousers")
+  machinesCreated           MachineMaintenance[]      @relation("machine_maintenances_created_by_idTousers")
+  machineStatusChanges      MachineStatusChange[]
+  memberProfile             MemberProfile?
+  createdMembershipRequests MembershipRequest[]       @relation("membership_requests_created_by_idTousers")
+  membershipRequests        MembershipRequest[]       @relation("membership_requests_member_idTousers")
+  memberships               Membership[]
+  notifications             Notification[]
+  payments                  Payment[]                 @relation("payments_member_idTousers")
+  registeredPayments        Payment[]                 @relation("payments_registered_by_idTousers")
+  voidedPayments            Payment[]                 @relation("payments_voided_by_idTousers")
+  cancelledPersonalSessions PersonalSession[]         @relation("personal_sessions_cancelled_by_idTousers")
+  markedPersonalSessions    PersonalSession[]         @relation("personal_sessions_marked_by_idTousers")
+  personalSessionsAsMember  PersonalSession[]         @relation("personal_sessions_member_idTousers")
+  personalSessionsAsTrainer PersonalSession[]         @relation("personal_sessions_trainer_idTousers")
+  progressRecords           ProgressRecord[]
+  refreshTokens             RefreshToken[]
+  reviews                   Review[]
+  memberAssignments         TrainerMemberAssignment?  @relation("trainer_member_assignments_member_idTousers")
+  trainerAssignments        TrainerMemberAssignment[] @relation("trainer_member_assignments_trainer_idTousers")
+  trainerSlots              TrainerSlot[]
+  memberRoutines            TrainingRoutine?          @relation("training_routines_member_idTousers")
+  trainerRoutines           TrainingRoutine[]         @relation("training_routines_trainer_idTousers")
+  profile                   UserProfile?
 
-@@map("users")
+  @@map("users")
+}
 
+enum AssignmentStatus {
+  ACTIVA
+  FINALIZADA
+}
+
+enum AttendanceStatus {
+  PENDIENTE
+  ASISTIO
+  NO_ASISTIO
+}
+
+enum CheckInMembershipStatus {
+  VIGENTE
+  VENCIDA
+  SIN_MEMBRESIA
+}
+
+enum MembershipStatus {
+  VIGENTE
+  VENCIDA
+}
+
+enum ClassStatus {
+  ACTIVA
+  INACTIVA
+}
+
+enum MachineStatus {
+  DISPONIBLE
+  EN_MANTENIMIENTO
+  FUERA_SERVICIO
 }
 
 enum NotificationModule {
@@ -65,34 +597,71 @@ enum NotificationModule {
   SISTEMA
 }
 
-model Notification {
-  id String @id @default(uuid())
-  memberId String @map("member_id")
-  member User @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  module NotificationModule @map("module")
-  title String
-  message String
-  referenceId String? @map("reference_id")
-  dedupeKey String? @map("dedupe_key")
-  read Boolean @default(false) @map("read")
-  readAt DateTime? @map("read_at")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([memberId])
-  @@index([module])
-  @@map("notifications")
+enum NotificationStatus {
+  NO_LEIDA
+  LEIDA
 }
 
-model RefreshToken {
-  id String @id @default(uuid())
-   // Se guarda el SHA-256 del token, nunca el token en claro: si se filtra la
-  // base, los refresh tokens emitidos no son utilizables.
-tokenHash String @unique @map("token_hash")
-userId String @map("user_id")
-user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-expiresAt DateTime @map("expires_at")
-revokedAt DateTime? @map("revoked_at")
-createdAt DateTime @default(now()) @map("created_at")
-@@index([userId])
-@@map("refresh_tokens")
+enum PaymentConcept {
+  MEMBRESIA
+  SESION_ADICIONAL
+  SESION_PERSONAL
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TARJETA
+}
+
+enum PaymentStatus {
+  PENDIENTE
+  PAGADO
+  ANULADO
+}
+
+enum PersonalSessionStatus {
+  CONFIRMADA
+  CANCELADA
+  COMPLETADA
+}
+
+enum PlanStatus {
+  ACTIVO
+  INACTIVO
+}
+
+enum PlanType {
+  MONTHLY
+  QUARTERLY
+  BY_CLASSES
+}
+
+enum ReservationStatus {
+  CONFIRMADA
+  CANCELADA
+  CANCELADA_POR_GIMNASIO
+}
+
+enum RoutineStatus {
+  VIGENTE
+  REEMPLAZADA
+  FINALIZADA
+}
+
+enum SessionStatus {
+  PROGRAMADA
+  EN_CURSO
+  COMPLETADA
+  CANCELADA
+}
+
+enum SlotStatus {
+  LIBRE
+  RESERVADO
+}
+
+enum UserRole {
+  MIEMBRO
+  ENTRENADOR
+  RECEPCION_ADMIN
 }
