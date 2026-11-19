@@ -14,7 +14,8 @@ import type { User } from '@PrismaClient';
  * diferencia de tiempo permite enumerar qué emails están registrados.
  * Corresponde a un valor aleatorio; nunca va a matchear.
  */
-const DUMMY_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEe.7ttRFZIqjvBeT3M1kRDRm1gy9cKr9Wy';
+const DUMMY_HASH =
+  '$2b$12$C6UzMDM.H6dfI/f/IKcEe.7ttRFZIqjvBeT3M1kRDRm1gy9cKr9Wy';
 
 @Injectable()
 export class AuthService {

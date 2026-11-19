@@ -40,23 +40,32 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extractBearerToken(request.headers.authorization);
 
     if (!token) {
-      throw new UnauthorizedException('Falta el token de acceso.');
+      throw new UnauthorizedException('No autenticado');
     }
 
     let payload: AccessTokenPayload;
     try {
-      payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token);
+      payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
+        algorithms: ['HS256'],
+      });
     } catch {
       // Cubre firma inválida, token expirado y token malformado por igual:
       // no conviene decirle al cliente cuál de los tres fue.
-      throw new UnauthorizedException('Token de acceso inválido o expirado.');
+      throw new UnauthorizedException('No autenticado');
     }
 
     // Se relee el usuario en cada request para que una cuenta desactivada o
     // eliminada deje de funcionar sin esperar a que expire el token.
+    if (
+      typeof payload.sub !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        payload.sub,
+      )
+    )
+      throw new UnauthorizedException('No autenticado');
     const user = await this.usersService.findById(payload.sub);
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('La cuenta no existe o está inactiva.');
+      throw new UnauthorizedException('No autenticado');
     }
 
     request.user = user;
