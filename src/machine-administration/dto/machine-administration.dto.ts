@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, type TransformFnParams } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  IsBoolean,
   Matches,
   Max,
   MaxLength,
@@ -17,6 +18,24 @@ import { MachineStatus } from '@PrismaClient';
 
 const REASON_MIN_LENGTH = 10;
 const REASON_MAX_LENGTH = 250;
+
+function parseInteger({ value }: TransformFnParams): unknown {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) ? value : Number.NaN;
+  }
+  if (typeof value !== 'string' || !/^[+-]?\d+$/.test(value)) {
+    return Number.NaN;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : Number.NaN;
+}
+
+function parseStrictBoolean({ value }: TransformFnParams): unknown {
+  if (value === true || value === false) return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+}
 
 export class MachineIdParamsDto {
   @ApiProperty({ format: 'uuid' })
@@ -98,14 +117,14 @@ export class ListMachinesQueryDto {
 
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(parseInteger)
   @IsInt()
   @Min(1)
   page = 1;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(parseInteger)
   @IsInt()
   @Min(1)
   @Max(50)
@@ -197,4 +216,46 @@ export class ChangeMachineStatusResponseDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: Date;
+}
+
+export class MaintenanceHistoryQueryDto {
+  @ApiPropertyOptional({
+    description: 'Si es true, devuelve solo períodos abiertos.',
+  })
+  @IsOptional()
+  @Transform(parseStrictBoolean)
+  @IsBoolean()
+  openOnly?: boolean;
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Transform(parseInteger)
+  @IsInt()
+  @Min(1)
+  page = 1;
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
+  @IsOptional()
+  @Transform(parseInteger)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  pageSize = 20;
+}
+export class MaintenanceHistoryItemDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) machineId!: string;
+  @ApiProperty({ maxLength: REASON_MAX_LENGTH }) reason!: string;
+  @ApiProperty({ format: 'date-time' }) startedAt!: Date;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  endedAt!: Date | null;
+  @ApiProperty({ format: 'uuid' }) createdById!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) closedById!:
+    string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: Date;
+}
+export class MaintenanceHistoryResponseDto {
+  @ApiProperty({ type: [MaintenanceHistoryItemDto] })
+  data!: MaintenanceHistoryItemDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
 }

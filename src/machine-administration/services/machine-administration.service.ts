@@ -4,6 +4,7 @@ import { GymClock } from '@Common/time';
 import { MachineStatus, type Machine } from '@PrismaClient';
 import {
   MachineAdministrationRepository,
+  type MaintenanceHistoryQuery,
   type ListMachinesQuery,
 } from '../repositories/index.js';
 import type {
@@ -16,6 +17,8 @@ import type {
   MachineListResponseDto,
   MachineSummaryDto,
   OpenMaintenanceResponseDto,
+  MaintenanceHistoryQueryDto,
+  MaintenanceHistoryResponseDto,
 } from '../dto/index.js';
 
 const UUID_PATTERN =
@@ -40,6 +43,48 @@ export class MachineAdministrationService {
     };
   }
 
+  async listMaintenanceHistory(
+    machineId: string,
+    query: MaintenanceHistoryQueryDto,
+  ): Promise<MaintenanceHistoryResponseDto> {
+    this.validateUuid(machineId, 'El id de la máquina no es válido.');
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 50
+    ) {
+      throw new DomainError(
+        'INVALID',
+        'La paginación solicitada no es válida.',
+      );
+    }
+    const normalized: MaintenanceHistoryQuery = {
+      machineId,
+      openOnly: query.openOnly,
+      page,
+      pageSize,
+    };
+    const result = await this.repository.listMaintenanceHistory(normalized);
+    return {
+      data: result.data.map((entry) => ({
+        id: entry.id,
+        machineId: entry.machineId,
+        reason: entry.reason,
+        startedAt: entry.startedAt,
+        endedAt: entry.endedAt,
+        createdById: entry.createdById,
+        closedById: entry.closedById,
+        createdAt: entry.createdAt,
+      })),
+      total: result.total,
+      page,
+      pageSize,
+    };
+  }
   async openMaintenance(
     machineId: string,
     dto: OpenMaintenanceDto,
