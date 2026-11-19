@@ -1,4 +1,3 @@
-
 export interface HistoryQuery {
   from?: string;
   to?: string;
@@ -52,22 +51,16 @@ export function buildHistoryFilters(
   query: HistoryQuery,
   today = new Date(),
 ): HistoryFilters {
-  const currentDay = new Date(Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  ));
+  const currentDay = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+  );
 
   const defaultFrom = new Date(currentDay);
   defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
 
-  const from = query.from
-    ? parseDate(query.from)
-    : defaultFrom;
+  const from = query.from ? parseDate(query.from) : defaultFrom;
 
-  const to = query.to
-    ? parseDate(query.to)
-    : currentDay;
+  const to = query.to ? parseDate(query.to) : currentDay;
 
   if (from > to) {
     throw new Error('La fecha inicial no puede superar la final.');
