@@ -154,7 +154,7 @@ model Exercise {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model MachineMaintenance {
   id          String    @id @default(uuid()) @db.Uuid
-  machineId   String    @unique(map: "maintenance_one_open_per_machine", where: raw("(ended_at IS NULL)")) @map("machine_id") @db.Uuid
+  machineId   String    @map("machine_id") @db.Uuid
   reason      String    @db.VarChar(250)
   startedAt   DateTime  @map("started_at")
   endedAt     DateTime? @map("ended_at")
@@ -166,6 +166,7 @@ model MachineMaintenance {
   createdBy   User      @relation("machine_maintenances_created_by_idTousers", fields: [createdById], references: [id])
   machine     Machine   @relation(fields: [machineId], references: [id])
 
+  @@unique([machineId], map: "maintenance_one_open_per_machine", where: raw("(ended_at IS NULL)"))
   @@index([machineId, endedAt])
   @@map("machine_maintenances")
 }
@@ -193,7 +194,7 @@ model Machine {
   status        MachineStatus         @default(DISPONIBLE)
   createdAt     DateTime              @default(now()) @map("created_at")
   updatedAt     DateTime              @updatedAt @map("updated_at")
-  maintenances  MachineMaintenance?
+  maintenances  MachineMaintenance[]
   statusChanges MachineStatusChange[]
 
   @@index([status, location])
@@ -225,6 +226,7 @@ model MembershipPlan {
   durationMonths Int?                @map("duration_months")
   requests       MembershipRequest[]
   memberships    Membership[]
+  periods        MembershipPeriod[]
 
   @@map("membership_plans")
 }
@@ -243,6 +245,8 @@ model MembershipRequest {
   createdById      String         @map("created_by_id") @db.Uuid
   createdAt        DateTime       @default(now()) @map("created_at")
   appliedAt        DateTime?      @map("applied_at")
+  previousState    Json?          @map("previous_state")
+  membership       Membership?    @relation(fields: [membershipId], references: [id], onDelete: Restrict, map: "membership_requests_membership_fkey")
   createdBy        User           @relation("membership_requests_created_by_idTousers", fields: [createdById], references: [id], map: "membership_requests_creator_fkey")
   member           User           @relation("membership_requests_member_idTousers", fields: [memberId], references: [id], map: "membership_requests_member_fkey")
   payment          Payment        @relation(fields: [paymentId], references: [id], map: "membership_requests_payment_fkey")
@@ -265,6 +269,8 @@ model Membership {
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   reservations     ClassReservation[]
+  requests         MembershipRequest[]
+  periods          MembershipPeriod[]
   member           User               @relation(fields: [memberId], references: [id])
   payment          Payment            @relation(fields: [paymentId], references: [id])
   plan             MembershipPlan     @relation(fields: [planId], references: [id])
@@ -274,6 +280,26 @@ model Membership {
   @@index([memberId, startsOn, endsOn])
   @@index([memberId, startsOn], map: "memberships_member_starts_on_idx")
   @@map("memberships")
+}
+
+model MembershipPeriod {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  membershipId   String         @map("membership_id") @db.Uuid
+  memberId       String         @map("member_id") @db.Uuid
+  planId         String         @map("plan_id") @db.Uuid
+  paymentId      String         @unique @map("payment_id") @db.Uuid
+  startsOn       DateTime       @map("starts_on") @db.Date
+  endsOn         DateTime       @map("ends_on") @db.Date
+  creditsGranted Int?           @map("credits_granted")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  membership     Membership     @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  member         User           @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  plan           MembershipPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payment        Payment        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([memberId, startsOn, endsOn])
+  @@index([endsOn])
+  @@map("membership_periods")
 }
 
 model Notification {
@@ -315,6 +341,7 @@ model Payment {
   voidedById        String?            @map("voided_by_id") @db.Uuid
   membershipRequest MembershipRequest?
   membership        Membership?
+  period            MembershipPeriod?
   member            User               @relation("payments_member_idTousers", fields: [memberId], references: [id])
   registeredBy      User?              @relation("payments_registered_by_idTousers", fields: [registeredById], references: [id])
   voidedBy          User?              @relation("payments_voided_by_idTousers", fields: [voidedById], references: [id])
@@ -330,7 +357,7 @@ model Payment {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model PersonalSession {
   id            String                @id @default(uuid()) @db.Uuid
-  slotId        String                @map("slot_id") @db.Uuid
+  slotId        String?               @map("slot_id") @db.Uuid
   trainerId     String                @map("trainer_id") @db.Uuid
   memberId      String                @map("member_id") @db.Uuid
   startsAt      DateTime              @map("starts_at")
@@ -348,7 +375,7 @@ model PersonalSession {
   markedBy      User?                 @relation("personal_sessions_marked_by_idTousers", fields: [markedById], references: [id])
   member        User                  @relation("personal_sessions_member_idTousers", fields: [memberId], references: [id])
   payment       Payment?              @relation(fields: [paymentId], references: [id])
-  slot          TrainerSlot           @relation(fields: [slotId], references: [id])
+  slot          TrainerSlot?          @relation(fields: [slotId], references: [id], onDelete: SetNull)
   trainer       User                  @relation("personal_sessions_trainer_idTousers", fields: [trainerId], references: [id])
 
   @@unique([slotId], map: "personal_sessions_slot_id_key", where: raw("(status = 'CONFIRMADA'::\"PersonalSessionStatus\")"))
@@ -383,6 +410,7 @@ model Receipt {
   number    BigInt        @unique @default(autoincrement())
   method    PaymentMethod
   issuedAt  DateTime      @default(now()) @map("issued_at")
+  createdAt DateTime      @default(now()) @map("created_at")
   payment   Payment       @relation(fields: [paymentId], references: [id])
 
   @@index([number])
@@ -536,6 +564,7 @@ model User {
   createdMembershipRequests MembershipRequest[]       @relation("membership_requests_created_by_idTousers")
   membershipRequests        MembershipRequest[]       @relation("membership_requests_member_idTousers")
   memberships               Membership[]
+  membershipPeriods         MembershipPeriod[]
   notifications             Notification[]
   payments                  Payment[]                 @relation("payments_member_idTousers")
   registeredPayments        Payment[]                 @relation("payments_registered_by_idTousers")
@@ -594,6 +623,7 @@ enum NotificationModule {
   MEMBRESIAS
   RESERVAS
   PAGOS
+  SESIONES_PERSONALES
   SISTEMA
 }
 
