@@ -11,6 +11,8 @@ import { serializable } from '@Common/repositories';
 import { isCalendarDate } from '@Common/time';
 import { PrismaService } from '@Prisma/services';
 import { eligibleMembership } from '../../memberships/repositories/eligible-membership.js';
+import { NotificationService, type NotificationInput } from '../../notifications/services/notification.service.js';
+import { reservationNotice } from '../../notifications/domain/notification-templates.js';
 import {
   RESERVATION_NOT_FOUND_MESSAGE,
   SESSION_NOT_FOUND_MESSAGE,
@@ -60,6 +62,7 @@ export class ClassReservationRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reader: ClassReservationReader,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(
@@ -68,9 +71,13 @@ export class ClassReservationRepository {
     now: Date,
     today: string,
   ): Promise<CreatedClassReservation> {
-    return serializable(this.prisma, async (tx) =>
-      this.reserve(tx, memberId, sessionId, now, today),
-    );
+    return serializable(this.prisma, async (tx) => {
+      const outcome = await this.reserve(tx, memberId, sessionId, now, today);
+      // H35 escribe en la misma DB/tx: si el aviso falla también se revierte
+      // la reserva, sin ventana de pérdida tras commit ni reenvíos externos.
+      await this.notificationService.send(outcome.notice, tx);
+      return outcome.result;
+    });
   }
 
   async cancelOwn(
@@ -78,9 +85,11 @@ export class ClassReservationRepository {
     memberId: string,
     now: Date,
   ): Promise<CancelledClassReservation> {
-    return serializable(this.prisma, async (tx) =>
-      this.cancelOwned(tx, id, memberId, now),
-    );
+    return serializable(this.prisma, async (tx) => {
+      const outcome = await this.cancelOwned(tx, id, memberId, now);
+      await this.notificationService.send(outcome.notice, tx);
+      return outcome.result;
+    });
   }
 
   listMine(
@@ -96,7 +105,7 @@ export class ClassReservationRepository {
     sessionId: string,
     now: Date,
     today: string,
-  ): Promise<CreatedClassReservation> {
+  ): Promise<{ result: CreatedClassReservation; notice: NotificationInput }> {
     this.assertCivilDate(today);
     await this.lockRow(tx, 'users', memberId);
     await this.lockRow(tx, 'class_sessions', sessionId);
@@ -126,8 +135,10 @@ export class ClassReservationRepository {
       select: { id: true, createdAt: true },
     });
 
-    await this.emitConfirmed(tx, created.id, session, memberId);
-    return this.toCreatedReservation(created.id, session);
+    return {
+      result: this.toCreatedReservation(created.id, created.createdAt, session),
+      notice: this.reservationNotification(created.id, session, memberId, false),
+    };
   }
 
   private assertCivilDate(today: string): void {
@@ -221,31 +232,24 @@ export class ClassReservationRepository {
     return true;
   }
 
-  private async emitConfirmed(
-    tx: TransactionClient,
+  private reservationNotification(
     reservationId: string,
-    session: BookableSession,
+    session: Pick<BookableSession, 'className' | 'startsAt'>,
     memberId: string,
-  ): Promise<void> {
-    await tx.domainEvent.create({
-      data: {
-        type: 'CLASS_RESERVATION_CONFIRMED',
-        aggregateId: reservationId,
-        recipientId: memberId,
-        payload: {
-          reservationId,
-          sessionId: session.id,
-          className: session.className,
-          startsAt: session.startsAt.toISOString(),
-          status: ReservationStatus.CONFIRMADA,
-        },
-        dedupeKey: `class-reservation-confirmed:${reservationId}`,
-      },
-    });
+    cancelled: boolean,
+  ): NotificationInput {
+    const notice = reservationNotice(
+      reservationId,
+      session.className,
+      session.startsAt,
+      cancelled,
+    );
+    return { memberIds: [memberId], ...notice, referenceId: reservationId };
   }
 
   private toCreatedReservation(
     id: string,
+    createdAt: Date,
     session: BookableSession,
   ): CreatedClassReservation {
     return {
@@ -255,8 +259,15 @@ export class ClassReservationRepository {
       startsAt: session.startsAt,
       endsAt: session.endsAt,
       status: ReservationStatus.CONFIRMADA,
-      createdAt: new Date(),
+      createdAt,
     };
+  }
+
+  private cancelledNotification(
+    reservation: CancellableReservation & { memberId: string },
+    memberId: string,
+  ): NotificationInput {
+    return this.reservationNotification(reservation.id, reservation, memberId, true);
   }
 
   private async cancelOwned(
@@ -264,7 +275,7 @@ export class ClassReservationRepository {
     id: string,
     memberId: string,
     now: Date,
-  ): Promise<CancelledClassReservation> {
+  ): Promise<{ result: CancelledClassReservation; notice: NotificationInput }> {
     const located = await this.findReservationSession(tx, id);
     await this.lockRow(tx, 'class_sessions', located);
     await this.lockRow(tx, 'class_reservations', id);
@@ -282,14 +293,15 @@ export class ClassReservationRepository {
     if (restoresCredit && reservation.membershipId) {
       await this.refundCredit(tx, reservation.membershipId);
     }
-    await this.emitCancelled(tx, reservation, memberId, now);
-
     const confirmedCount = await this.countConfirmed(tx, reservation.sessionId);
     return {
-      id,
-      status: ReservationStatus.CANCELADA,
-      cancelledAt: now,
-      freeSpots: computeFreeSpots(reservation.capacity, confirmedCount),
+      result: {
+        id,
+        status: ReservationStatus.CANCELADA,
+        cancelledAt: now,
+        freeSpots: computeFreeSpots(reservation.capacity, confirmedCount),
+      },
+      notice: this.cancelledNotification(reservation, memberId),
     };
   }
 
@@ -366,30 +378,6 @@ export class ClassReservationRepository {
     await tx.membership.update({
       where: { id: membershipId },
       data: { creditsRemaining: { increment: 1 } },
-    });
-  }
-
-  private async emitCancelled(
-    tx: TransactionClient,
-    reservation: CancellableReservation & { memberId: string },
-    memberId: string,
-    _now: Date,
-  ): Promise<void> {
-    await tx.domainEvent.create({
-      data: {
-        type: 'CLASS_RESERVATION_CANCELLED',
-        aggregateId: reservation.id,
-        recipientId: memberId,
-        payload: {
-          reservationId: reservation.id,
-          sessionId: reservation.sessionId,
-          className: reservation.className,
-          startsAt: reservation.startsAt.toISOString(),
-          status: ReservationStatus.CANCELADA,
-          message: 'El cupo fue liberado.',
-        },
-        dedupeKey: `class-reservation-cancelled:${reservation.id}`,
-      },
     });
   }
 
