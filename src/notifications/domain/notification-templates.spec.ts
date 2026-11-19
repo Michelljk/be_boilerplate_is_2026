@@ -12,12 +12,7 @@ describe('Plantillas de avisos (H31, H32, H33)', () => {
   });
 
   it('redacta el aviso de vencimiento con la fecha en dd/mm/aaaa', () => {
-    const notice = membershipExpiryNotice(
-      'm-1',
-      'Básico',
-      '2026-11-18',
-      7,
-    );
+    const notice = membershipExpiryNotice('m-1', 'Básico', '2026-11-18', 7);
     expect(notice.title).toBe('Tu membresía vence pronto');
     expect(notice.message).toBe(
       'Tu plan Básico vence el 18/11/2026. Renuévalo para no perder el acceso.',
@@ -27,9 +22,9 @@ describe('Plantillas de avisos (H31, H32, H33)', () => {
   });
 
   it('difiere la clave de deduplicación por umbral', () => {
-    expect(membershipExpiryNotice('m-1', 'Básico', '2026-11-18', 1).dedupeKey).toBe(
-      'VENC-m-1-1',
-    );
+    expect(
+      membershipExpiryNotice('m-1', 'Básico', '2026-11-18', 1).dedupeKey,
+    ).toBe('VENC-m-1-1');
   });
 
   it('convierte la hora UTC a la hora civil del gimnasio', () => {
@@ -59,7 +54,11 @@ describe('Plantillas de avisos (H31, H32, H33)', () => {
   });
 
   it('omite el motivo cuando la sesión se cancela sin explicación', () => {
-    const notice = classCancelledNotice('s-3', 'Funcional', '2026-11-13T15:00:00.000Z');
+    const notice = classCancelledNotice(
+      's-3',
+      'Funcional',
+      '2026-11-13T15:00:00.000Z',
+    );
     expect(notice.title).toBe('Clase cancelada');
     expect(notice.message).toBe(
       'La clase Funcional del 13/11/2026 a las 09:00 fue cancelada.',
@@ -68,6 +67,8 @@ describe('Plantillas de avisos (H31, H32, H33)', () => {
   });
 
   it('rechaza una fecha mal formada en lugar de inventarla', () => {
-    expect(() => membershipExpiryNotice('m-1', 'Básico', '2026-13-01', 7)).toThrow();
+    expect(() =>
+      membershipExpiryNotice('m-1', 'Básico', '2026-13-01', 7),
+    ).toThrow();
   });
 });
