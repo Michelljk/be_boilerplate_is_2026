@@ -13,14 +13,17 @@ import {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const ROUTINE_FIELDS = new Set([
   'memberId',
+  'expectedCurrentVersion',
   'name',
   'goal',
   'startsOn',
   'endsOn',
   'exercises',
 ]);
+
 const EXERCISE_FIELDS = new Set([
   'exerciseId',
   'weekday',
@@ -86,7 +89,21 @@ export class RoutineAssignmentService {
       'body',
     );
 
+
     if (!this.isUuid(dto.memberId)) this.invalid('memberId');
+
+    if (
+      dto.expectedCurrentVersion !== undefined &&
+      !this.isIntegerInRange(
+        dto.expectedCurrentVersion,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      )
+    ) {
+      this.invalid('expectedCurrentVersion');
+    }
+
+
     if (
       typeof dto.name !== 'string' ||
       dto.name.trim().length < 3 ||
@@ -137,8 +154,11 @@ export class RoutineAssignmentService {
       } satisfies CreateRoutineExerciseDto;
     });
 
+
+
     return {
       memberId: dto.memberId,
+      expectedCurrentVersion: dto.expectedCurrentVersion,
       name: dto.name.trim(),
       goal: dto.goal.trim(),
       startsOn: dto.startsOn,
@@ -146,6 +166,7 @@ export class RoutineAssignmentService {
       exercises,
     };
   }
+
 
   private rejectExtraProperties(
     value: Record<string, unknown>,

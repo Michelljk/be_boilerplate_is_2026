@@ -12,8 +12,10 @@ import {
 import type { CreateRoutineExerciseDto } from '../dto/create-training-routine.dto.js';
 import type { TrainingRoutineAssignment } from '../services/routine-assignment.service.js';
 
+
 export interface CreateRoutineAssignmentData {
   memberId: string;
+  expectedCurrentVersion?: number;
   name: string;
   goal: string;
   startsOn: Date;
@@ -21,6 +23,7 @@ export interface CreateRoutineAssignmentData {
   assignedAt: Date;
   exercises: CreateRoutineExerciseDto[];
 }
+
 
 /** Único punto H22 que accede a Prisma y encapsula la transacción. */
 @Injectable()
@@ -53,16 +56,31 @@ export class RoutineAssignmentRepository {
         );
       }
 
+
       const currentVersion = await this.latestVersionInTransaction(
         tx,
         data.memberId,
       );
+
+      // H22: detectar cambios concurrentes.
       if (currentVersion !== observedVersion) {
         throw new DomainError(
           'CONFLICT',
           'La rutina del miembro cambió mientras se procesaba la asignación.',
         );
       }
+
+      // H26: validar la versión esperada por el entrenador.
+      if (
+        data.expectedCurrentVersion !== undefined &&
+        currentVersion !== data.expectedCurrentVersion
+      ) {
+        throw new DomainError(
+          'CONFLICT',
+          'La versión actual de la rutina no coincide con la versión esperada.',
+        );
+      }
+
 
       const assignment = await tx.trainerMemberAssignment.findFirst({
         where: {
