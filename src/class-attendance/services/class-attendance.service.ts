@@ -46,7 +46,7 @@ export class ClassAttendanceService {
       pageSize < 1
     ) {
       throw new DomainError(
-        'BAD_REQUEST',
+        'INVALID',
         'La paginación no es válida.',
       );
     }
@@ -73,7 +73,7 @@ export class ClassAttendanceService {
       attendance !== 'NO_ASISTIO'
     ) {
       throw new DomainError(
-        'BAD_REQUEST',
+        'INVALID',
         'Valor de asistencia no válido.',
       );
     }
