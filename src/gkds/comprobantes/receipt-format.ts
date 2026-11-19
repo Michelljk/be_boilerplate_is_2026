@@ -1,4 +1,3 @@
-
 export interface ReceiptData {
   number: number;
   memberName: string;
@@ -44,8 +43,10 @@ export function prepareReceipt(data: ReceiptData): ReceiptSummary {
     throw new Error('Estado del pago inválido.');
   }
 
-  if (!(data.issuedAt instanceof Date) ||
-      Number.isNaN(data.issuedAt.getTime())) {
+  if (
+    !(data.issuedAt instanceof Date) ||
+    Number.isNaN(data.issuedAt.getTime())
+  ) {
     throw new Error('Fecha de emisión inválida.');
   }
 
