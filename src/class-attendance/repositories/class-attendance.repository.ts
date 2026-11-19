@@ -1,360 +1,349 @@
-
 import { Injectable } from '@nestjs/common';
+import {
+  AttendanceStatus,
+  Prisma,
+  ReservationStatus,
+  SessionStatus,
+} from '@PrismaClient';
 import { DomainError } from '@Common/errors';
-import { serializable } from '@Common/repositories';
 import { PrismaService } from '@Prisma/services';
-import type { Prisma } from '@PrismaClient';
 
-import type {
-  AttendanceCompletionResult,
-  AttendanceReservation,
-  AttendanceSession,
-  AttendanceUpdateResult,
-  ClassAttendanceRepositoryContract,
-  SessionAttendee,
-  SessionAttendeesPage,
-  ReservationState,
-  AttendanceValue,
-} from './class-attendance.repository.types.js';
-
-type SessionRow = AttendanceSession;
-
-type ReservationRow = {
-  id: string;
+export interface AttendeeListResult {
   sessionId: string;
-  status: ReservationState;
-  attendance: AttendanceValue;
-};
-
-type AttendeeRow = SessionAttendee;
-
-type CountRow = {
+  className: string;
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+  confirmedCount: number;
+  data: Array<{
+    reservationId: string;
+    memberNumber: string;
+    memberName: string;
+    reservationStatus: ReservationStatus;
+    attendance: AttendanceStatus;
+  }>;
   total: number;
-};
+  page: number;
+  pageSize: number;
+}
 
-type AttendanceCountRow = {
+export interface AttendanceUpdateResult {
+  reservationId: string;
+  attendance:
+    typeof AttendanceStatus.ASISTIO | typeof AttendanceStatus.NO_ASISTIO;
+  updatedAt: Date;
+}
+
+export interface CompleteSessionResult {
+  id: string;
+  status: typeof SessionStatus.COMPLETADA;
+  completedAt: Date;
   attendedCount: number;
   absentCount: number;
-};
+}
 
 @Injectable()
-export class ClassAttendanceRepository
-  implements ClassAttendanceRepositoryContract
-{
+export class ClassAttendanceRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findSession(
+  async attendees(
     sessionId: string,
-  ): Promise<AttendanceSession | null> {
-    const rows = await this.prisma.$queryRaw<SessionRow[]>`
-      SELECT
-        cs.id::text AS id,
-        cs.trainer_id::text AS "trainerId",
-        ct.name AS "className",
-        cs.starts_at AS "startsAt",
-        cs.ends_at AS "endsAt",
-        cs.capacity,
-        cs.status::text AS status,
-        cs.completed_at AS "completedAt"
-      FROM class_sessions cs
-      JOIN class_templates ct
-        ON ct.id = cs.class_template_id
-      WHERE cs.id = ${sessionId}::uuid
-    `;
-
-    return rows[0] ?? null;
-  }
-
-  async findAttendees(
-    sessionId: string,
+    trainerId: string,
     page: number,
     pageSize: number,
-  ): Promise<SessionAttendeesPage> {
-    const session = await this.findSession(sessionId);
+    _now: Date,
+  ): Promise<AttendeeListResult> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.lockSession(tx, sessionId);
+        const session = await tx.classSession.findUnique({
+          where: { id: sessionId },
+          select: {
+            id: true,
+            trainerId: true,
+            startsAt: true,
+            endsAt: true,
+            capacity: true,
+            status: true,
+            classTemplate: { select: { name: true } },
+          },
+        });
+        this.assertOwned(session, trainerId);
 
-    if (!session) {
-      throw new DomainError(
-        'NOT_FOUND',
-        'Sesión grupal no encontrada.',
-      );
-    }
-
-    const offset = (page - 1) * pageSize;
-
-    const [data, totals] = await Promise.all([
-      this.prisma.$queryRaw<AttendeeRow[]>`
-        SELECT
-          cr.id::text AS "reservationId",
-          COALESCE(u.member_number, '') AS "memberNumber",
-          u.email AS "memberName",
-          cr.status::text AS "reservationStatus",
-          cr.attendance::text AS attendance
-        FROM class_reservations cr
-        JOIN users u ON u.id = cr.member_id
-        WHERE cr.session_id = ${sessionId}::uuid
-          AND cr.status = 'CONFIRMADA'
-        ORDER BY u.email ASC, cr.id ASC
-        LIMIT ${pageSize}
-        OFFSET ${offset}
-      `,
-      this.prisma.$queryRaw<CountRow[]>`
-        SELECT COUNT(*)::int AS total
-        FROM class_reservations
-        WHERE session_id = ${sessionId}::uuid
-          AND status = 'CONFIRMADA'
-      `,
-    ]);
-
-    const total = totals[0]?.total ?? 0;
-
-    return {
-      session,
-      confirmedCount: total,
-      data,
-      total,
-      page,
-      pageSize,
-    };
-  }
-
-  async findReservation(
-    reservationId: string,
-  ): Promise<AttendanceReservation | null> {
-    const rows = await this.prisma.$queryRaw<ReservationRow[]>`
-      SELECT
-        id::text AS id,
-        session_id::text AS "sessionId",
-        status::text AS status,
-        attendance::text AS attendance
-      FROM class_reservations
-      WHERE id = ${reservationId}::uuid
-    `;
-
-    const reservation = rows[0];
-
-    if (!reservation) {
-      return null;
-    }
-
-    const session = await this.findSession(
-      reservation.sessionId,
+        const where = {
+          sessionId,
+          status: ReservationStatus.CONFIRMADA,
+        } as const;
+        const [confirmedCount, rows] = await Promise.all([
+          tx.classReservation.count({ where }),
+          tx.classReservation.findMany({
+            where,
+            select: {
+              id: true,
+              status: true,
+              attendance: true,
+              member: {
+                select: {
+                  profile: { select: { fullName: true } },
+                  memberProfile: { select: { memberNumber: true } },
+                },
+              },
+            },
+            orderBy: [
+              { member: { profile: { fullName: 'asc' } } },
+              { id: 'asc' },
+            ],
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+          }),
+        ]);
+        return {
+          sessionId: session.id,
+          className: session.classTemplate.name,
+          startsAt: session.startsAt,
+          endsAt: session.endsAt,
+          capacity: session.capacity,
+          confirmedCount,
+          data: rows.map((row) => ({
+            reservationId: row.id,
+            memberNumber: row.member.memberProfile?.memberNumber ?? '',
+            memberName: row.member.profile?.fullName ?? 'Nombre no disponible',
+            reservationStatus: row.status,
+            attendance: row.attendance,
+          })),
+          total: confirmedCount,
+          page,
+          pageSize,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
-
-    if (!session) {
-      return null;
-    }
-
-    return {
-      ...reservation,
-      session,
-    };
   }
 
   async updateAttendance(
     reservationId: string,
     trainerId: string,
-    attendance: 'ASISTIO' | 'NO_ASISTIO',
+    attendance:
+      typeof AttendanceStatus.ASISTIO | typeof AttendanceStatus.NO_ASISTIO,
     now: Date,
   ): Promise<AttendanceUpdateResult> {
-    return serializable(this.prisma, async (tx) => {
-      const references = await tx.$queryRaw<
-        { sessionId: string }[]
-      >`
-        SELECT session_id::text AS "sessionId"
-        FROM class_reservations
-        WHERE id = ${reservationId}::uuid
-      `;
+    return this.prisma.$transaction(
+      async (tx) => {
+        const lookup = await tx.classReservation.findUnique({
+          where: { id: reservationId },
+          select: { sessionId: true },
+        });
+        if (!lookup)
+          throw new DomainError('NOT_FOUND', 'La reserva no existe.');
+        await this.lockSession(tx, lookup.sessionId);
+        await tx.$queryRaw`SELECT id FROM class_reservations WHERE id = ${reservationId}::uuid FOR UPDATE`;
 
-      const reference = references[0];
+        let session = await tx.classSession.findUnique({
+          where: { id: lookup.sessionId },
+          select: {
+            id: true,
+            trainerId: true,
+            startsAt: true,
+            endsAt: true,
+            status: true,
+          },
+        });
+        this.assertOwned(session, trainerId);
+        session = await this.markStartedIfDue(tx, session, now);
+        if (
+          session.status !== SessionStatus.EN_CURSO ||
+          now < session.startsAt
+        ) {
+          throw new DomainError(
+            'CONFLICT',
+            'No se puede registrar asistencia en esta sesión.',
+          );
+        }
 
-      if (!reference) {
-        throw new DomainError(
-          'NOT_FOUND',
-          'Reserva no encontrada.',
-        );
-      }
-
-      // Siempre bloquear primero la sesión y después
-      // la reserva para mantener un orden consistente.
-      const session = await this.lockSession(
-        tx,
-        reference.sessionId,
-      );
-
-      if (!session || session.trainerId !== trainerId) {
-        throw new DomainError(
-          'NOT_FOUND',
-          'Reserva no encontrada.',
-        );
-      }
-
-      const rows = await tx.$queryRaw<ReservationRow[]>`
-        SELECT
-          id::text AS id,
-          session_id::text AS "sessionId",
-          status::text AS status,
-          attendance::text AS attendance
-        FROM class_reservations
-        WHERE id = ${reservationId}::uuid
-        FOR UPDATE
-      `;
-
-      const reservation = rows[0];
-
-      if (
-        !reservation ||
-        reservation.sessionId !== session.id
-      ) {
-        throw new DomainError(
-          'NOT_FOUND',
-          'Reserva no encontrada.',
-        );
-      }
-
-      if (reservation.status !== 'CONFIRMADA') {
-        throw new DomainError(
-          'CONFLICT',
-          'La reserva no está confirmada.',
-        );
-      }
-
-      if (
-        session.status !== 'EN_CURSO' ||
-        session.startsAt.getTime() > now.getTime()
-      ) {
-        throw new DomainError(
-          'CONFLICT',
-          'La sesión no permite registrar asistencia.',
-        );
-      }
-
-      const updated = await tx.$queryRaw<
-        { id: string; attendance: string; updatedAt: Date }[]
-      >`
-        UPDATE class_reservations
-        SET
-          attendance = ${attendance}::"AttendanceStatus",
-          updated_at = ${now}
-        WHERE id = ${reservationId}::uuid
-        RETURNING
-          id::text AS id,
-          attendance::text AS attendance,
-          updated_at AS "updatedAt"
-      `;
-
-      const result = updated[0];
-
-      if (!result) {
-        throw new DomainError(
-          'CONFLICT',
-          'No se pudo actualizar la asistencia.',
-        );
-      }
-
-      return {
-        reservationId: result.id,
-        attendance,
-        updatedAt: result.updatedAt,
-      };
-    });
+        const reservation = await tx.classReservation.findUnique({
+          where: { id: reservationId },
+          select: { id: true, status: true },
+        });
+        if (
+          !reservation ||
+          reservation.status !== ReservationStatus.CONFIRMADA
+        ) {
+          throw new DomainError('CONFLICT', 'La reserva no está confirmada.');
+        }
+        const updated = await tx.classReservation.update({
+          where: { id: reservationId },
+          data: {
+            attendance,
+            attendanceUpdatedAt: now,
+            attendanceUpdatedById: trainerId,
+          },
+          select: { id: true, attendance: true, attendanceUpdatedAt: true },
+        });
+        if (
+          updated.attendance !== AttendanceStatus.ASISTIO &&
+          updated.attendance !== AttendanceStatus.NO_ASISTIO
+        ) {
+          throw new DomainError(
+            'CONFLICT',
+            'La asistencia no quedó registrada.',
+          );
+        }
+        return {
+          reservationId: updated.id,
+          attendance: updated.attendance,
+          updatedAt: updated.attendanceUpdatedAt ?? now,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
-  async completeSession(
+  async complete(
     sessionId: string,
     trainerId: string,
     now: Date,
-  ): Promise<AttendanceCompletionResult> {
-    return serializable(this.prisma, async (tx) => {
-      const session = await this.lockSession(
-        tx,
-        sessionId,
-      );
+  ): Promise<CompleteSessionResult> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.lockSession(tx, sessionId);
+        let session = await tx.classSession.findUnique({
+          where: { id: sessionId },
+          select: {
+            id: true,
+            trainerId: true,
+            startsAt: true,
+            endsAt: true,
+            status: true,
+            completedAt: true,
+          },
+        });
+        this.assertOwned(session, trainerId);
+        if (session.status === SessionStatus.COMPLETADA) {
+          return this.completedSummary(tx, sessionId, session, now);
+        }
+        session = await this.markStartedIfDue(tx, session, now);
+        if (session.status !== SessionStatus.EN_CURSO || now < session.endsAt) {
+          throw new DomainError(
+            'CONFLICT',
+            'La sesión solo puede cerrarse al finalizar su horario.',
+          );
+        }
 
-      if (!session || session.trainerId !== trainerId) {
-        throw new DomainError(
-          'NOT_FOUND',
-          'Sesión grupal no encontrada.',
-        );
-      }
+        await tx.classReservation.updateMany({
+          where: {
+            sessionId,
+            status: ReservationStatus.CONFIRMADA,
+            attendance: AttendanceStatus.PENDIENTE,
+          },
+          data: {
+            attendance: AttendanceStatus.NO_ASISTIO,
+            attendanceUpdatedAt: now,
+            attendanceUpdatedById: trainerId,
+          },
+        });
+        const completed = await tx.classSession.update({
+          where: { id: sessionId },
+          data: {
+            status: SessionStatus.COMPLETADA,
+            completedAt: now,
+            completedById: trainerId,
+          },
+          select: { id: true, status: true, completedAt: true },
+        });
+        const [attendedCount, absentCount] = await Promise.all([
+          tx.classReservation.count({
+            where: {
+              sessionId,
+              status: ReservationStatus.CONFIRMADA,
+              attendance: AttendanceStatus.ASISTIO,
+            },
+          }),
+          tx.classReservation.count({
+            where: {
+              sessionId,
+              status: ReservationStatus.CONFIRMADA,
+              attendance: AttendanceStatus.NO_ASISTIO,
+            },
+          }),
+        ]);
+        return {
+          id: completed.id,
+          status: SessionStatus.COMPLETADA,
+          completedAt: completed.completedAt ?? now,
+          attendedCount,
+          absentCount,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
 
-      if (
-        session.status !== 'EN_CURSO' ||
-        session.endsAt.getTime() > now.getTime()
-      ) {
-        throw new DomainError(
-          'CONFLICT',
-          'La sesión todavía no puede completarse.',
-        );
-      }
-
-      // Los inscritos confirmados sin asistencia
-      // registrada se consideran ausentes.
-      await tx.$executeRaw`
-        UPDATE class_reservations
-        SET
-          attendance = 'NO_ASISTIO'::"AttendanceStatus",
-          updated_at = ${now}
-        WHERE session_id = ${sessionId}::uuid
-          AND status = 'CONFIRMADA'
-          AND attendance = 'PENDIENTE'
-      `;
-
-      const counts = await tx.$queryRaw<
-        AttendanceCountRow[]
-      >`
-        SELECT
-          COUNT(*) FILTER (
-            WHERE attendance = 'ASISTIO'
-          )::int AS "attendedCount",
-          COUNT(*) FILTER (
-            WHERE attendance = 'NO_ASISTIO'
-          )::int AS "absentCount"
-        FROM class_reservations
-        WHERE session_id = ${sessionId}::uuid
-          AND status = 'CONFIRMADA'
-      `;
-
-      await tx.$executeRaw`
-        UPDATE class_sessions
-        SET
-          status = 'COMPLETADA'::"SessionStatus",
-          completed_at = ${now},
-          completed_by_id = ${trainerId}::uuid,
-          updated_at = ${now}
-        WHERE id = ${sessionId}::uuid
-      `;
-
-      return {
-        id: sessionId,
-        status: 'COMPLETADA',
-        completedAt: now,
-        attendedCount: counts[0]?.attendedCount ?? 0,
-        absentCount: counts[0]?.absentCount ?? 0,
-      };
+  /** H8 criterio 5 del PDF: EN_CURSO se activa al inicio; el GET nunca escribe. */
+  async advanceDueSessions(now: Date): Promise<number> {
+    const result = await this.prisma.classSession.updateMany({
+      where: { status: SessionStatus.PROGRAMADA, startsAt: { lte: now } },
+      data: { status: SessionStatus.EN_CURSO },
     });
+    return result.count;
+  }
+  private async completedSummary(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    session: { id: string; completedAt: Date | null },
+    now: Date,
+  ): Promise<CompleteSessionResult> {
+    const [attendedCount, absentCount] = await Promise.all([
+      tx.classReservation.count({
+        where: {
+          sessionId,
+          status: ReservationStatus.CONFIRMADA,
+          attendance: AttendanceStatus.ASISTIO,
+        },
+      }),
+      tx.classReservation.count({
+        where: {
+          sessionId,
+          status: ReservationStatus.CONFIRMADA,
+          attendance: AttendanceStatus.NO_ASISTIO,
+        },
+      }),
+    ]);
+    return {
+      id: session.id,
+      status: SessionStatus.COMPLETADA,
+      completedAt: session.completedAt ?? now,
+      attendedCount,
+      absentCount,
+    };
+  }
+  private assertOwned<T extends { trainerId: string }>(
+    session: T | null,
+    trainerId: string,
+  ): asserts session is T {
+    if (!session || session.trainerId !== trainerId) {
+      throw new DomainError('NOT_FOUND', 'La sesión no existe.');
+    }
+  }
+
+  private async markStartedIfDue<
+    T extends { id: string; startsAt: Date; status: SessionStatus },
+  >(tx: Prisma.TransactionClient, session: T, now: Date): Promise<T> {
+    if (session.status !== SessionStatus.PROGRAMADA || now < session.startsAt)
+      return session;
+    await tx.classSession.update({
+      where: { id: session.id },
+      data: { status: SessionStatus.EN_CURSO },
+    });
+    return { ...session, status: SessionStatus.EN_CURSO };
   }
 
   private async lockSession(
     tx: Prisma.TransactionClient,
     sessionId: string,
-  ): Promise<AttendanceSession | null> {
-    const rows = await tx.$queryRaw<SessionRow[]>`
-      SELECT
-        cs.id::text AS id,
-        cs.trainer_id::text AS "trainerId",
-        ct.name AS "className",
-        cs.starts_at AS "startsAt",
-        cs.ends_at AS "endsAt",
-        cs.capacity,
-        cs.status::text AS status,
-        cs.completed_at AS "completedAt"
-      FROM class_sessions cs
-      JOIN class_templates ct
-        ON ct.id = cs.class_template_id
-      WHERE cs.id = ${sessionId}::uuid
-      FOR UPDATE OF cs
-    `;
-
-    return rows[0] ?? null;
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM class_sessions WHERE id = ${sessionId}::uuid FOR UPDATE`;
+    if (rows.length === 0)
+      throw new DomainError('NOT_FOUND', 'La sesión no existe.');
   }
 }

@@ -31,6 +31,7 @@ export class ClassQueriesService {
     const search: ClassSessionSearch = {
       from: this.localStartOfDay(query.from),
       toExclusive: this.localStartOfDay(addDays(query.to, 1)),
+      notStartedAfter: this.gymClock.now(),
       name: this.normalizeName(query.name),
       roomId: query.roomId,
       trainerId: query.trainerId,

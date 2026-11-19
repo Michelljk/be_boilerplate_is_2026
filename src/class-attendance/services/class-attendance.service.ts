@@ -1,166 +1,113 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { DomainError } from '@Common/errors';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { UserRole, type User } from '@PrismaClient';
-
+import { DomainError } from '@Common/errors';
+import { GymClock } from '@Common/time';
 import type {
-  AttendanceCompletionResult,
-  AttendanceUpdateResult,
-  ClassAttendanceRepositoryContract,
-  SessionAttendeesPage,
-} from '../repositories/class-attendance.repository.types.js';
+  AttendeesQueryDto,
+  UpdateAttendanceDto,
+} from '../dto/class-attendance.dto.js';
+import { ClassAttendanceRepository } from '../repositories/class-attendance.repository.js';
 
-export const CLASS_ATTENDANCE_REPOSITORY =
-  'CLASS_ATTENDANCE_REPOSITORY';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
-export class ClassAttendanceService {
+export class ClassAttendanceService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ClassAttendanceService.name);
+  private timer?: ReturnType<typeof setInterval>;
   constructor(
-    @Inject(CLASS_ATTENDANCE_REPOSITORY)
-    private readonly repository: ClassAttendanceRepositoryContract,
+    private readonly repository: ClassAttendanceRepository,
+    private readonly clock: GymClock,
   ) {}
 
-  /**
-   * H8: consultar los asistentes de una sesión grupal.
-   */
-  async findAttendees(
-    user: User,
-    sessionId: string,
-    page = 1,
-    pageSize = 10,
-  ): Promise<SessionAttendeesPage> {
+  onModuleInit(): void {
+    this.timer = setInterval(() => {
+      void this.repository
+        .advanceDueSessions(this.clock.now())
+        .catch((error: unknown) => {
+          this.logger.error(
+            'No se pudieron avanzar las sesiones programadas.',
+            error,
+          );
+        });
+    }, 15_000);
+    this.timer.unref?.();
+  }
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+  attendees(user: User, sessionId: string, query: AttendeesQueryDto) {
     this.assertTrainer(user);
-
-    const session = await this.repository.findSession(sessionId);
-
-    if (!session || session.trainerId !== user.id) {
-      throw new DomainError(
-        'NOT_FOUND',
-        'Sesión grupal no encontrada.',
-      );
-    }
-
+    this.assertUuid(sessionId);
+    const page = query?.page ?? 1;
+    const pageSize = query?.pageSize ?? 10;
     if (
       !Number.isInteger(page) ||
-      !Number.isInteger(pageSize) ||
       page < 1 ||
-      pageSize < 1
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 100
     ) {
-      throw new DomainError(
-        'INVALID',
-        'La paginación no es válida.',
-      );
+      throw new DomainError('INVALID', 'Parámetros de paginación inválidos.');
     }
-
-    return this.repository.findAttendees(
+    return this.repository.attendees(
       sessionId,
+      user.id,
       page,
       pageSize,
+      this.clock.now(),
     );
   }
 
-  /**
-   * H8: registrar asistencia o inasistencia.
-   */
-  async updateAttendance(
+  updateAttendance(
     user: User,
     reservationId: string,
-    attendance: 'ASISTIO' | 'NO_ASISTIO',
-  ): Promise<AttendanceUpdateResult> {
+    dto: UpdateAttendanceDto,
+  ) {
     this.assertTrainer(user);
-
+    this.assertUuid(reservationId);
     if (
-      attendance !== 'ASISTIO' &&
-      attendance !== 'NO_ASISTIO'
+      !dto ||
+      (dto.attendance !== 'ASISTIO' && dto.attendance !== 'NO_ASISTIO')
     ) {
       throw new DomainError(
         'INVALID',
-        'Valor de asistencia no válido.',
+        'La asistencia debe ser ASISTIO o NO_ASISTIO.',
       );
     }
-
-    const reservation =
-      await this.repository.findReservation(reservationId);
-
-    if (
-      !reservation ||
-      reservation.session.trainerId !== user.id
-    ) {
-      throw new DomainError(
-        'NOT_FOUND',
-        'Reserva no encontrada.',
-      );
-    }
-
-    if (reservation.status !== 'CONFIRMADA') {
-      throw new DomainError(
-        'CONFLICT',
-        'La reserva no está confirmada.',
-      );
-    }
-
-    const now = new Date();
-
-    if (
-      reservation.session.status !== 'EN_CURSO' ||
-      reservation.session.startsAt.getTime() > now.getTime()
-    ) {
-      throw new DomainError(
-        'CONFLICT',
-        'La sesión no está habilitada para registrar asistencia.',
-      );
-    }
-
     return this.repository.updateAttendance(
       reservationId,
       user.id,
-      attendance,
-      now,
+      dto.attendance,
+      this.clock.now(),
     );
   }
 
-  /**
-   * H8: completar la sesión grupal.
-   */
-  async completeSession(
-    user: User,
-    sessionId: string,
-  ): Promise<AttendanceCompletionResult> {
+  complete(user: User, sessionId: string) {
     this.assertTrainer(user);
-
-    const session = await this.repository.findSession(sessionId);
-
-    if (!session || session.trainerId !== user.id) {
-      throw new DomainError(
-        'NOT_FOUND',
-        'Sesión grupal no encontrada.',
-      );
-    }
-
-    const now = new Date();
-
-    if (
-      session.status !== 'EN_CURSO' ||
-      session.endsAt.getTime() > now.getTime()
-    ) {
-      throw new DomainError(
-        'CONFLICT',
-        'La sesión todavía no puede completarse.',
-      );
-    }
-
-    return this.repository.completeSession(
-      sessionId,
-      user.id,
-      now,
-    );
+    this.assertUuid(sessionId);
+    return this.repository.complete(sessionId, user.id, this.clock.now());
   }
 
   private assertTrainer(user: User): void {
-    if (user.role !== UserRole.ENTRENADOR) {
+    if (!user || user.role !== UserRole.ENTRENADOR) {
       throw new DomainError(
         'FORBIDDEN',
-        'Solo un entrenador puede registrar asistencia.',
+        'Solo el entrenador asignado puede gestionar la asistencia.',
       );
     }
+  }
+
+  private assertUuid(value: string): void {
+    if (!UUID_PATTERN.test(value))
+      throw new DomainError(
+        'INVALID',
+        'El identificador debe ser UUID válido.',
+      );
   }
 }

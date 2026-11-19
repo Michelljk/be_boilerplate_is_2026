@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -11,6 +12,8 @@ import {
   Max,
   MaxLength,
   Min,
+  IsEnum,
+  IsDateString,
 } from 'class-validator';
 import type {
   ClassSession,
@@ -291,4 +294,50 @@ export class TrainerCatalogDto {
   id!: string;
   @ApiProperty()
   name!: string;
+}
+
+export class TrainerCatalogPageDto {
+  @ApiProperty({ type: [TrainerCatalogDto] })
+  data!: TrainerCatalogDto[];
+}
+
+export class AdminClassSessionsQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('all')
+  classTemplateId?: string;
+  @ApiPropertyOptional({
+    enum: ['PROGRAMADA', 'EN_CURSO', 'COMPLETADA', 'CANCELADA'],
+  })
+  @IsOptional()
+  @IsEnum(['PROGRAMADA', 'EN_CURSO', 'COMPLETADA', 'CANCELADA'])
+  status?: SessionStatus;
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsDateString({ strict: true })
+  from?: string;
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsDateString({ strict: true })
+  to?: string;
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 10 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  pageSize = 10;
+}
+export class AdminClassSessionsPageDto {
+  @ApiProperty({ type: [AdminClassSessionResponseDto] })
+  data!: AdminClassSessionResponseDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
 }
