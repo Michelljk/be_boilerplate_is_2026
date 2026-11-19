@@ -13,14 +13,17 @@ import {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const ROUTINE_FIELDS = new Set([
   'memberId',
+  'expectedCurrentVersion',
   'name',
   'goal',
   'startsOn',
   'endsOn',
   'exercises',
 ]);
+
 const EXERCISE_FIELDS = new Set([
   'exerciseId',
   'weekday',
