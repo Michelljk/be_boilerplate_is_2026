@@ -1,23 +1,31 @@
-
 import { Injectable } from '@nestjs/common';
 import { DomainError } from '@Common/errors';
 import { GymClock } from '@Common/time';
-import { UserRole } from '@PrismaClient';
 import type { User } from '@PrismaClient';
-
+import { EXERCISE_METRIC } from '../progress-metrics.js';
 import { MAX_MARKS_PER_RECORD } from '../limits.js';
-
 import { ProgressRecordRepository } from '../repositories/progress-record.repository.js';
-
 import type {
+  EvolutionView,
   ProgressHistoryPage,
   ProgressRecordView,
-} from '../repositories/progress-record.repository.js';
-
+} from '../progress-views.js';
+import type {
+  EvolutionQueryDto,
+  ProgressHistoryQueryDto,
+} from '../dto/progress-query.dto.js';
 import type { ProgressRecordInputDto } from '../dto/progress-record-input.dto.js';
+import {
+  assertMember,
+  assertUuid,
+  resolveCivilRange,
+} from './progress-guards.js';
 
 /**
- * H24 — Registro y edición de progreso físico.
+ * Progreso físico personal (H24) y evolución (H25).
+ *
+ * El `memberId` nunca se lee del body ni de la query: siempre es el sujeto de la
+ * sesión, de modo que un miembro no puede crear ni editar el registro de otro.
  */
 @Injectable()
 export class ProgressService {
@@ -26,119 +34,88 @@ export class ProgressService {
     private readonly clock: GymClock,
   ) {}
 
-  /**
-   * Crea un registro para el miembro autenticado.
-   */
+  /** Alta del registro del día; duplicado responde 409. */
   async create(
     user: User,
     input: ProgressRecordInputDto,
   ): Promise<ProgressRecordView> {
-    this.assertMember(user);
+    assertMember(user);
     this.assertInput(input);
-
     return this.repo.upsert(user.id, input);
   }
 
-  /**
-   * Edita un registro del miembro autenticado.
-   */
+  /** Edición del propio registro; ajeno responde 404 sin confirmar su existencia. */
   async update(
     user: User,
     recordId: string,
     input: ProgressRecordInputDto,
   ): Promise<ProgressRecordView> {
-    this.assertMember(user);
-    this.assertUuid(recordId);
+    assertMember(user);
+    assertUuid(recordId, 'id');
     this.assertInput(input);
-
-    return this.repo.upsert(
-      user.id,
-      input,
-      recordId,
-    );
+    return this.repo.upsert(user.id, input, recordId);
   }
 
-  /**
-   * Devuelve los registros del miembro,
-   * ordenados del más reciente al más antiguo.
-   */
+  /** Historial paginado, del más reciente al más antiguo. */
   async history(
     user: User,
-    query: { page: number; pageSize: number },
+    query: ProgressHistoryQueryDto,
   ): Promise<ProgressHistoryPage> {
-    this.assertMember(user);
+    assertMember(user);
+    return this.repo.history(user.id, query.page, query.pageSize);
+  }
 
-    return this.repo.history(
+  /**
+   * Serie de una métrica (H25).
+   *
+   * `exerciseWeightKg` exige `exerciseId` porque la serie se construye con las
+   * marcas de ese ejercicio; los demás indicadores leen su columna del registro.
+   */
+  async evolution(
+    user: User,
+    query: EvolutionQueryDto,
+  ): Promise<EvolutionView> {
+    assertMember(user);
+    const range = resolveCivilRange(query.from, query.to);
+    if (query.metric === EXERCISE_METRIC && !query.exerciseId) {
+      throw new DomainError(
+        'INVALID',
+        'exerciseId es obligatorio cuando metric es exerciseWeightKg. field=exerciseId',
+      );
+    }
+    return this.repo.evolution(
       user.id,
-      query.page,
-      query.pageSize,
+      query.metric,
+      query.exerciseId,
+      range.from,
+      range.to,
     );
   }
 
-  /**
-   * Solo un miembro activo puede gestionar
-   * sus propios registros.
-   */
-  private assertMember(user: User): void {
-    if (
-      !user?.isActive ||
-      user.role !== UserRole.MIEMBRO
-    ) {
-      throw new DomainError(
-        'FORBIDDEN',
-        'Acceso denegado.',
-      );
-    }
-  }
-
-  /**
-   * Rechaza identificadores inválidos.
-   */
-  private assertUuid(value: string): void {
-    const pattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    if (!pattern.test(value)) {
-      throw new DomainError(
-        'INVALID',
-        'Identificador inválido. field=id',
-      );
-    }
-  }
-
-  /**
-   * Comprueba la fecha y las marcas.
-   */
-  private assertInput(
-    input: ProgressRecordInputDto,
-  ): void {
-    // Impide registrar fechas posteriores a hoy.
+  private assertInput(input: ProgressRecordInputDto): void {
     if (input.recordDate > this.clock.today()) {
       throw new DomainError(
         'INVALID',
         'recordDate no puede ser posterior al día actual. field=recordDate',
       );
     }
-
     const marks = input.marks;
-
+    if (marks === null) {
+      throw new DomainError(
+        'INVALID',
+        'marks debe ser un arreglo. field=marks',
+      );
+    }
     if (!marks) {
       return;
     }
-
-    // Máximo de marcas permitido.
     if (marks.length > MAX_MARKS_PER_RECORD) {
       throw new DomainError(
         'INVALID',
         `Un registro admite como máximo ${MAX_MARKS_PER_RECORD} marcas. field=marks`,
       );
     }
-
-    // Un ejercicio no puede repetirse.
-    const unique = new Set(
-      marks.map((mark) => mark.exerciseId),
-    );
-
+    const unique = new Set(marks.map((mark) => mark.exerciseId));
     if (unique.size !== marks.length) {
       throw new DomainError(
         'INVALID',

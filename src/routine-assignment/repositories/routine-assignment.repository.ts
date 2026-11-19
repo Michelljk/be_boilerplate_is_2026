@@ -12,10 +12,9 @@ import {
 import type { CreateRoutineExerciseDto } from '../dto/create-training-routine.dto.js';
 import type { TrainingRoutineAssignment } from '../services/routine-assignment.service.js';
 
-
 export interface CreateRoutineAssignmentData {
-  memberId: string;
   expectedCurrentVersion?: number;
+  memberId: string;
   name: string;
   goal: string;
   startsOn: Date;
@@ -23,7 +22,6 @@ export interface CreateRoutineAssignmentData {
   assignedAt: Date;
   exercises: CreateRoutineExerciseDto[];
 }
-
 
 /** Único punto H22 que accede a Prisma y encapsula la transacción. */
 @Injectable()
@@ -35,8 +33,6 @@ export class RoutineAssignmentRepository {
     today: string,
     data: CreateRoutineAssignmentData,
   ): Promise<TrainingRoutineAssignment> {
-    const observedVersion = await this.latestVersion(data.memberId);
-
     return serializable(this.prisma, async (tx) => {
       await this.lockMember(tx, data.memberId);
 
@@ -56,32 +52,6 @@ export class RoutineAssignmentRepository {
         );
       }
 
-
-      const currentVersion = await this.latestVersionInTransaction(
-        tx,
-        data.memberId,
-      );
-
-      // H22: detectar cambios concurrentes.
-      if (currentVersion !== observedVersion) {
-        throw new DomainError(
-          'CONFLICT',
-          'La rutina del miembro cambió mientras se procesaba la asignación.',
-        );
-      }
-
-      // H26: validar la versión esperada por el entrenador.
-      if (
-        data.expectedCurrentVersion !== undefined &&
-        currentVersion !== data.expectedCurrentVersion
-      ) {
-        throw new DomainError(
-          'CONFLICT',
-          'La versión actual de la rutina no coincide con la versión esperada.',
-        );
-      }
-
-
       const assignment = await tx.trainerMemberAssignment.findFirst({
         where: {
           trainerId,
@@ -92,6 +62,22 @@ export class RoutineAssignmentRepository {
       });
       if (!assignment) {
         throw new DomainError('NOT_FOUND', 'Recurso no encontrado.');
+      }
+
+      // El bloqueo del usuario serializa ambas ventanas y evita revelar la
+      // versión de un miembro que no está asignado al entrenador.
+      const currentVersion = await this.latestVersionInTransaction(
+        tx,
+        data.memberId,
+      );
+      if (
+        data.expectedCurrentVersion !== undefined &&
+        data.expectedCurrentVersion !== currentVersion
+      ) {
+        throw new DomainError(
+          'CONFLICT',
+          'La rutina fue actualizada; vuelve a cargarla',
+        );
       }
 
       await eligibleMembership(tx, data.memberId, today);
@@ -123,7 +109,7 @@ export class RoutineAssignmentRepository {
         if (changed.count !== 1) {
           throw new DomainError(
             'CONFLICT',
-            'La rutina vigente cambió mientras se procesaba la asignación.',
+            'La rutina fue actualizada; vuelve a cargarla',
           );
         }
       }
@@ -166,18 +152,10 @@ export class RoutineAssignmentRepository {
       return {
         ...routine,
         status: RoutineStatus.VIGENTE,
+        previousVersionStatus: current ? ('REEMPLAZADA' as const) : undefined,
         exerciseCount: data.exercises.length,
       };
     });
-  }
-
-  private async latestVersion(memberId: string): Promise<number> {
-    const latest = await this.prisma.trainingRoutine.findFirst({
-      where: { memberId },
-      orderBy: [{ version: 'desc' }, { id: 'asc' }],
-      select: { version: true },
-    });
-    return latest?.version ?? 0;
   }
 
   private async latestVersionInTransaction(

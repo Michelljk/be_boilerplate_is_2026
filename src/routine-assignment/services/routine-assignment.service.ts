@@ -13,7 +13,6 @@ import {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const ROUTINE_FIELDS = new Set([
   'memberId',
   'expectedCurrentVersion',
@@ -23,7 +22,6 @@ const ROUTINE_FIELDS = new Set([
   'endsOn',
   'exercises',
 ]);
-
 const EXERCISE_FIELDS = new Set([
   'exerciseId',
   'weekday',
@@ -32,12 +30,17 @@ const EXERCISE_FIELDS = new Set([
   'position',
 ]);
 
+type RoutineAssignmentInput = CreateTrainingRoutineDto & {
+  expectedCurrentVersion?: number;
+};
+
 export interface TrainingRoutineAssignment {
   id: string;
   memberId: string;
   trainerId: string;
   version: number;
   status: 'VIGENTE';
+  previousVersionStatus?: 'REEMPLAZADA';
   assignedAt: Date;
   startsOn: Date;
   endsOn: Date;
@@ -54,7 +57,7 @@ export class RoutineAssignmentService {
 
   async assign(
     user: User,
-    dto: CreateTrainingRoutineDto,
+    dto: RoutineAssignmentInput,
   ): Promise<TrainingRoutineAssignment> {
     if (!user.isActive || user.role !== 'ENTRENADOR') {
       throw new DomainError('FORBIDDEN', 'Acceso denegado.');
@@ -63,6 +66,7 @@ export class RoutineAssignmentService {
     const normalized = this.validateAndNormalize(dto);
     const data: CreateRoutineAssignmentData = {
       ...normalized,
+      expectedCurrentVersion: dto.expectedCurrentVersion,
       assignedAt: this.gymClock.now(),
       startsOn: this.gymClock.dateOnly(normalized.startsOn),
       endsOn: this.gymClock.dateOnly(normalized.endsOn),
@@ -75,7 +79,7 @@ export class RoutineAssignmentService {
     );
   }
 
-  private validateAndNormalize(dto: CreateTrainingRoutineDto): Omit<
+  private validateAndNormalize(dto: RoutineAssignmentInput): Omit<
     CreateRoutineAssignmentData,
     'assignedAt' | 'startsOn' | 'endsOn'
   > & {
@@ -89,21 +93,7 @@ export class RoutineAssignmentService {
       'body',
     );
 
-
     if (!this.isUuid(dto.memberId)) this.invalid('memberId');
-
-    if (
-      dto.expectedCurrentVersion !== undefined &&
-      !this.isIntegerInRange(
-        dto.expectedCurrentVersion,
-        1,
-        Number.MAX_SAFE_INTEGER,
-      )
-    ) {
-      this.invalid('expectedCurrentVersion');
-    }
-
-
     if (
       typeof dto.name !== 'string' ||
       dto.name.trim().length < 3 ||
@@ -154,11 +144,8 @@ export class RoutineAssignmentService {
       } satisfies CreateRoutineExerciseDto;
     });
 
-
-
     return {
       memberId: dto.memberId,
-      expectedCurrentVersion: dto.expectedCurrentVersion,
       name: dto.name.trim(),
       goal: dto.goal.trim(),
       startsOn: dto.startsOn,
@@ -166,7 +153,6 @@ export class RoutineAssignmentService {
       exercises,
     };
   }
-
 
   private rejectExtraProperties(
     value: Record<string, unknown>,

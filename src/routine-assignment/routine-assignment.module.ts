@@ -1,21 +1,19 @@
-
-import { Module } from '@nestjs/common';
-
 import { TrainingCatalogController } from './controllers/training-catalog.controller.js';
-import { RoutineAssignmentController } from './controllers/index.js';
-import { TrainerRoutineVersionController } from './controllers/trainer-routine-version.controller.js';
-
 import { TrainingCatalogService } from './services/training-catalog.service.js';
-import { RoutineAssignmentService } from './services/index.js';
-
 import { TrainingCatalogRepository } from './repositories/training-catalog.repository.js';
+import { Module } from '@nestjs/common';
+import {
+  RoutineAssignmentController,
+  TrainerRoutineVersionController,
+} from './controllers/index.js';
 import { RoutineAssignmentRepository } from './repositories/index.js';
+import { RoutineAssignmentService } from './services/index.js';
 
 @Module({
   controllers: [
     RoutineAssignmentController,
-    TrainingCatalogController,
     TrainerRoutineVersionController,
+    TrainingCatalogController,
   ],
   providers: [
     RoutineAssignmentService,
@@ -23,9 +21,6 @@ import { RoutineAssignmentRepository } from './repositories/index.js';
     TrainingCatalogService,
     TrainingCatalogRepository,
   ],
-  exports: [
-    RoutineAssignmentService,
-    RoutineAssignmentRepository,
-  ],
+  exports: [RoutineAssignmentService, RoutineAssignmentRepository],
 })
 export class RoutineAssignmentModule {}
