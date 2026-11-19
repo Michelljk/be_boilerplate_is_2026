@@ -36,15 +36,19 @@ const CANCELLABLE_MESSAGE = 'La sesión ya no puede cancelarse';
 const SLOT_MISSING_MESSAGE = 'El horario ya no existe';
 const MISSING_CHARGE_MESSAGE = 'La sesión confirmada no tiene un cobro asociado.';
 
+
 const sessionSelect = {
   id: true,
   startsAt: true,
   endsAt: true,
   status: true,
   trainer: {
-    select: { profile: { select: { fullName: true } }, email: true },
+    select: {
+      email: true,
+    },
   },
 } satisfies Prisma.PersonalSessionSelect;
+
 
 const bookedSelect = {
   ...sessionSelect,
@@ -372,7 +376,7 @@ export class PersonalSessionsRepository {
   private toSessionRecord(row: SessionRow): PersonalSessionRecord {
     return {
       id: row.id,
-      trainerName: row.trainer.profile?.fullName ?? row.trainer.email,
+      trainerName: row.trainer.email,
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       status: row.status,

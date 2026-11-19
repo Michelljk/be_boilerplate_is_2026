@@ -39,3 +39,5 @@ export interface ClassReservationListOptions {
   skip: number;
   take: number;
 }
+
+

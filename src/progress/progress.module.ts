@@ -1,26 +1,20 @@
-
 import { Module } from '@nestjs/common';
+import { ProgressController, TrainerProgressController } from './controllers/index.js';
+import {
+  ProgressRecordRepository,
+  ProgressTrainerRepository,
+} from './repositories/index.js';
+import { ProgressService, TrainerProgressService } from './services/index.js';
 
-import { PrismaModule } from '../prisma/prisma.module.js';
-
-import { TrainerProgressController } from './controllers/trainer-progress.controller.js';
-import { TrainerProgressService } from './services/trainer-progress.service.js';
-import { ProgressTrainerRepository } from './repositories/progress-trainer.repository.js';
-
-/**
- * H26 — Consulta del progreso de miembros
- * asignados al entrenador.
- */
+/** Dominio 6: progreso del miembro (H24, H25) y ficha del entrenador (H26). */
 @Module({
-  imports: [
-    PrismaModule,
-  ],
-  controllers: [
-    TrainerProgressController,
-  ],
+  controllers: [ProgressController, TrainerProgressController],
   providers: [
-    TrainerProgressService,
+    ProgressRecordRepository,
     ProgressTrainerRepository,
+    ProgressService,
+    TrainerProgressService,
   ],
+  exports: [ProgressService, TrainerProgressService],
 })
 export class ProgressModule {}
