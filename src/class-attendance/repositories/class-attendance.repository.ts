@@ -13,7 +13,6 @@ import type {
   ClassAttendanceRepositoryContract,
   SessionAttendee,
   SessionAttendeesPage,
-  SessionState,
   ReservationState,
   AttendanceValue,
 } from './class-attendance.repository.types.js';
