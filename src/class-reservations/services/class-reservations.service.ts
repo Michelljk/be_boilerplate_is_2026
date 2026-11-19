@@ -5,6 +5,7 @@ import { GymClock } from '@Common/time';
 import type { User } from '@PrismaClient';
 import {
   ClassReservationItemDto,
+  User,
   CreateClassReservationResponseDto,
   CancelClassReservationResponseDto,
 } from '../dto/index.js';
@@ -61,16 +62,26 @@ export class ClassReservationsService {
     };
   }
 
-  /** H6: identidad de la sesión autenticada; el id del body/query no existe. */
-  async cancel(
-    user: User,
-    id: string,
-  ): Promise<CancelClassReservationResponseDto> {
-    this.assertMember(user);
-    const cancelled: CancelledClassReservation =
-      await this.repository.cancelOwn(id, user.id, this.clock.now());
-    return CancelClassReservationResponseDto.fromResult(cancelled);
-  }
+
+/** H6: cancelar una reserva del miembro autenticado. */
+async cancel(
+  user: User,
+  id: string,
+): Promise<CancelClassReservationResponseDto> {
+  this.assertMember(user);
+
+  const cancelled: CancelledClassReservation =
+    await this.repository.cancelOwn(
+      id,
+      user.id,
+      this.clock.now(),
+    );
+
+  return CancelClassReservationResponseDto.fromResult(
+    cancelled,
+  );
+}
+
 
   private assertMember(user: User): void {
     if (user.role !== UserRole.MIEMBRO) {
