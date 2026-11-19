@@ -1,4 +1,3 @@
-
 export type PaymentStatus = 'PENDIENTE' | 'PAGADO' | 'ANULADO';
 
 export interface PaymentVoidInput {
@@ -30,10 +29,7 @@ export function validatePaymentVoid(
     throw new Error('Identificador del pago inválido.');
   }
 
-  if (
-    typeof input.actorId !== 'string' ||
-    !UUID_REGEX.test(input.actorId)
-  ) {
+  if (typeof input.actorId !== 'string' || !UUID_REGEX.test(input.actorId)) {
     throw new Error('Identificador del responsable inválido.');
   }
 
@@ -52,9 +48,7 @@ export function validatePaymentVoid(
   const reason = input.reason.trim();
 
   if (reason.length < 10 || reason.length > 500) {
-    throw new Error(
-      'El motivo debe contener entre 10 y 500 caracteres.',
-    );
+    throw new Error('El motivo debe contener entre 10 y 500 caracteres.');
   }
 
   return {
