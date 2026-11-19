@@ -1,10 +1,9 @@
+import { BadRequestException } from '@nestjs/common';
+import { isH16TestCardApproved } from '../../payments/payment-card-simulation.js';
 
 export type CollectionMethod = 'EFECTIVO' | 'TARJETA';
 
-export type CollectionStatus =
-  | 'PENDIENTE'
-  | 'PAGADO'
-  | 'ANULADO';
+export type CollectionStatus = 'PENDIENTE' | 'PAGADO' | 'ANULADO';
 
 export interface CollectionInput {
   paymentId: string;
@@ -25,38 +24,36 @@ export interface CollectionResult {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function validateCollection(
-  input: CollectionInput,
-): CollectionResult {
+export function validateCollection(input: CollectionInput): CollectionResult {
   if (!UUID_REGEX.test(input.paymentId)) {
-    throw new Error('Identificador del pago inválido.');
+    throw new BadRequestException('Identificador del pago inválido.');
   }
 
   if (input.status !== 'PENDIENTE') {
-    throw new Error('Solo se pueden cobrar pagos pendientes.');
+    throw new BadRequestException('Solo se pueden cobrar pagos pendientes.');
   }
 
   if (
     !Number.isFinite(input.amountUsd) ||
     input.amountUsd <= 0 ||
-    !Number.isInteger(Math.round(input.amountUsd * 100))
+    Math.round(input.amountUsd * 100) !== input.amountUsd * 100
   ) {
-    throw new Error('Monto inválido.');
+    throw new BadRequestException('Monto inválido.');
   }
 
   if (!['EFECTIVO', 'TARJETA'].includes(input.method)) {
-    throw new Error('Método de pago inválido.');
+    throw new BadRequestException('Método de pago inválido.');
   }
 
   if (input.method === 'TARJETA') {
     if (!/^\d{4}$/.test(input.cardLast4 ?? '')) {
-      throw new Error(
+      throw new BadRequestException(
         'Se requieren cuatro dígitos de tarjeta válidos.',
       );
     }
 
-    if (input.cardLast4 !== '4242') {
-      throw new Error('Pago simulado rechazado.');
+    if (!isH16TestCardApproved(`000000000000${input.cardLast4}`)) {
+      throw new BadRequestException('Pago simulado rechazado.');
     }
   }
 
@@ -65,9 +62,6 @@ export function validateCollection(
     status: 'PAGADO',
     method: input.method,
     amountUsd: input.amountUsd.toFixed(2),
-    cardLast4:
-      input.method === 'TARJETA'
-        ? input.cardLast4!
-        : null,
+    cardLast4: input.method === 'TARJETA' ? input.cardLast4! : null,
   };
 }
