@@ -1,11 +1,12 @@
-
 import {
+  BadRequestException,
   Body,
   Controller,
   Param,
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
+rom '@nestjs/common';
 
 import {
   ApiBadRequestResponse,
@@ -81,6 +82,17 @@ export class TrainerRoutineVersionController {
     memberId: string,
     @Body() dto: CreateRoutineVersionDto,
   ): Promise<TrainingRoutineAssignmentResponseDto> {
+    
+    if (
+      !Number.isSafeInteger(dto.expectedCurrentVersion) ||
+      dto.expectedCurrentVersion === undefined ||
+      dto.expectedCurrentVersion < 1
+    ) {
+      throw new BadRequestException(
+        'expectedCurrentVersion es obligatorio y debe ser un entero positivo.',
+      );
+    }
+
     const input = Object.assign(
       new CreateTrainingRoutineDto(),
       dto,
