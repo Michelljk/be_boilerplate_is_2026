@@ -40,7 +40,8 @@ export class PersonalSessionsController {
 
   @Post()
   @ApiOperation({
-    summary: 'H10. Agenda una sesión personal en un espacio LIBRE del entrenador',
+    summary:
+      'H10. Agenda una sesión personal en un espacio LIBRE del entrenador',
   })
   @ApiCreatedResponse({
     description:
@@ -48,10 +49,13 @@ export class PersonalSessionsController {
     type: BookedPersonalSessionDto,
   })
   @ApiBadRequestResponse({
-    description: 'Body ausente, slotId no es un UUID o trae propiedades no permitidas.',
+    description:
+      'Body ausente, slotId no es un UUID o trae propiedades no permitidas.',
   })
   @ApiUnauthorizedResponse({ description: 'Falta un JWT válido.' })
-  @ApiForbiddenResponse({ description: 'El usuario autenticado no tiene rol MIEMBRO.' })
+  @ApiForbiddenResponse({
+    description: 'El usuario autenticado no tiene rol MIEMBRO.',
+  })
   @ApiNotFoundResponse({ description: 'El espacio indicado no existe.' })
   @ApiConflictResponse({
     description:
@@ -66,27 +70,40 @@ export class PersonalSessionsController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'H10. Lista las sesiones personales del miembro autenticado' })
+  @ApiOperation({
+    summary: 'H10. Lista las sesiones personales del miembro autenticado',
+  })
   @ApiOkResponse({ type: PersonalSessionListResponseDto })
   @ApiBadRequestResponse({
-    description: 'Estado no reconocido o paginación fuera de rango (page ≥ 1, 1 ≤ pageSize ≤ 50).',
+    description:
+      'Estado no reconocido o paginación fuera de rango (page ≥ 1, 1 ≤ pageSize ≤ 50).',
   })
   @ApiUnauthorizedResponse({ description: 'Falta un JWT válido.' })
-  @ApiForbiddenResponse({ description: 'El usuario autenticado no tiene rol MIEMBRO.' })
+  @ApiForbiddenResponse({
+    description: 'El usuario autenticado no tiene rol MIEMBRO.',
+  })
   async mine(
     @CurrentUser() user: User,
     @Query() query: ListPersonalSessionsQueryDto,
   ): Promise<PersonalSessionListResponseDto> {
     const page = await this.service.mine(user, query);
-    return PersonalSessionListResponseDto.fromPage(page, query.page, query.pageSize);
+    return PersonalSessionListResponseDto.fromPage(
+      page,
+      query.page,
+      query.pageSize,
+    );
   }
 
   @Patch(':id/cancel')
-  @ApiOperation({ summary: 'H11. Cancela una sesión propia hasta 12 horas antes' })
+  @ApiOperation({
+    summary: 'H11. Cancela una sesión propia hasta 12 horas antes',
+  })
   @ApiOkResponse({ type: CancelledPersonalSessionDto })
   @ApiBadRequestResponse({ description: 'El id de la sesión no es un UUID.' })
   @ApiUnauthorizedResponse({ description: 'Falta un JWT válido.' })
-  @ApiForbiddenResponse({ description: 'El usuario autenticado no tiene rol MIEMBRO.' })
+  @ApiForbiddenResponse({
+    description: 'El usuario autenticado no tiene rol MIEMBRO.',
+  })
   @ApiNotFoundResponse({ description: 'Sesión inexistente o de otro miembro.' })
   @ApiConflictResponse({
     description:

@@ -16,7 +16,6 @@ interface LockedTrainerSlotRow {
   id: string;
   trainerId: string;
   status: SlotStatus;
-  hasPersonalSession: boolean;
 }
 
 @Injectable()
@@ -93,12 +92,6 @@ export class TrainerSlotRepository {
     await serializable(this.prisma, async (tx) => {
       const row = await this.lockSlot(tx, id);
       this.assertOwnedAndFree(row, trainerId);
-      if (row.hasPersonalSession) {
-        throw new DomainError(
-          'CONFLICT',
-          'El espacio tiene una sesión histórica asociada',
-        );
-      }
       await tx.trainerSlot.delete({ where: { id } });
       return undefined;
     });
@@ -112,12 +105,7 @@ export class TrainerSlotRepository {
       SELECT
         ts."id"::text AS "id",
         ts."trainer_id"::text AS "trainerId",
-        ts."status"::text AS "status",
-        EXISTS (
-          SELECT 1
-          FROM "personal_sessions" ps
-          WHERE ps."slot_id" = ts."id"
-        ) AS "hasPersonalSession"
+        ts."status"::text AS "status"
       FROM "trainer_slots" ts
       WHERE ts."id" = ${id}::uuid
       FOR UPDATE

@@ -108,7 +108,9 @@ export class PersonalSessionListResponseDto {
     pageSize: number,
   ): PersonalSessionListResponseDto {
     const dto = new PersonalSessionListResponseDto();
-    dto.data = page.items.map((item) => PersonalSessionItemDto.fromRecord(item));
+    dto.data = page.items.map((item) =>
+      PersonalSessionItemDto.fromRecord(item),
+    );
     dto.total = page.total;
     dto.page = pageNumber;
     dto.pageSize = pageSize;
@@ -171,7 +173,8 @@ export class CancelledPersonalSessionDto {
 
   @ApiProperty({
     enum: [SlotStatus.LIBRE, SlotStatus.RESERVADO],
-    description: 'Estado del horario tras la cancelación; LIBRE en el caso normal.',
+    description:
+      'Estado del horario tras la cancelación; LIBRE en el caso normal.',
     example: SlotStatus.LIBRE,
   })
   slotStatus!: SlotStatus;
@@ -184,7 +187,9 @@ export class CancelledPersonalSessionDto {
   })
   paymentStatus!: PaymentStatus | null;
 
-  static fromRecord(record: CancelledSessionRecord): CancelledPersonalSessionDto {
+  static fromRecord(
+    record: CancelledSessionRecord,
+  ): CancelledPersonalSessionDto {
     const dto = new CancelledPersonalSessionDto();
     dto.id = record.id;
     dto.status = record.status;

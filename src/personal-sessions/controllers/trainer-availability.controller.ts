@@ -34,8 +34,12 @@ export class TrainerAvailabilityController {
   @ApiOkResponse({ type: TrainerSlotListResponseDto })
   @ApiBadRequestResponse({ description: 'trainerId no es un UUID válido.' })
   @ApiUnauthorizedResponse({ description: 'Falta un JWT válido.' })
-  @ApiForbiddenResponse({ description: 'El usuario autenticado no tiene rol MIEMBRO.' })
-  @ApiNotFoundResponse({ description: 'El entrenador no existe o está inactivo.' })
+  @ApiForbiddenResponse({
+    description: 'El usuario autenticado no tiene rol MIEMBRO.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El entrenador no existe o está inactivo.',
+  })
   async slots(
     @CurrentUser() user: User,
     @Param('trainerId', new ParseUUIDPipe()) trainerId: string,
