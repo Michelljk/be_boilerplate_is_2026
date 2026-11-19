@@ -151,12 +151,15 @@ export class PaymentsRepository {
     const where = conditions.join(' AND ');
 
     // Total de pagos pendientes según los filtros.
-    const count = await this.query<{ n: number }>(
-      `SELECT COUNT(*)::int AS n
-       FROM payments p
-       WHERE ${where}`,
-      ...args,
-    );
+
+const count = await this.query<{ n: number }>(
+  `SELECT COUNT(*)::int AS n
+   FROM payments p
+   WHERE ${where}
+     AND $1::date IS NOT NULL`,
+  ...args,
+);
+
 
     // Parámetros de paginación.
     args.push(
