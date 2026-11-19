@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { MembershipsModule } from '../memberships/memberships.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PaymentsController } from './controllers/index.js';
 import { PaymentsRepository } from './repositories/index.js';
 import { PaymentsService } from './services/index.js';
@@ -14,7 +15,7 @@ import { PaymentsService } from './services/index.js';
  * revés, para que el grafo de módulos siga siendo un DAG.
  */
 @Module({
-  imports: [PrismaModule, MembershipsModule],
+  imports: [PrismaModule, MembershipsModule, NotificationsModule],
   controllers: [PaymentsController],
   providers: [PaymentsService, PaymentsRepository],
   exports: [PaymentsService, PaymentsRepository],
