@@ -46,7 +46,7 @@ reservations ClassReservation[]
 trainerSlots TrainerSlot[]
 personalSessionsAsTrainer PersonalSession[] @relation("trainer_sessions")
 personalSessionsAsMember PersonalSession[] @relation("member_sessions")
-trainerAssignments TrainerMemberAssignment[] @relation("trainer_assignments
+trainerAssignments TrainerMemberAssignment[] @relation("trainer_assignments")
 memberAssignments TrainerMemberAssignment[] @relation("member_assignments")
 routinesAsTrainer TrainingRoutine[] @relation("routine_trainers")
 routinesAsMember TrainingRoutine[] @relation("routine_members")

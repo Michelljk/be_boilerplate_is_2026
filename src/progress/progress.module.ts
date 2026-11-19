@@ -1,25 +1,20 @@
-
 import { Module } from '@nestjs/common';
+import { ProgressController, TrainerProgressController } from './controllers/index.js';
+import {
+  ProgressRecordRepository,
+  ProgressTrainerRepository,
+} from './repositories/index.js';
+import { ProgressService, TrainerProgressService } from './services/index.js';
 
-import { PrismaModule } from '../prisma/prisma.module.js';
-
-import { ProgressEvolutionController } from './controllers/progress-evolution.controller.js';
-
-import { ProgressEvolutionService } from './services/progress-evolution.service.js';
-
-import { ProgressEvolutionRepository } from './repositories/progress-evolution.repository.js';
-
-/**
- * H25 — Consulta de evolución física.
- */
+/** Dominio 6: progreso del miembro (H24, H25) y ficha del entrenador (H26). */
 @Module({
-  imports: [PrismaModule],
-  controllers: [
-    ProgressEvolutionController,
-  ],
+  controllers: [ProgressController, TrainerProgressController],
   providers: [
-    ProgressEvolutionService,
-    ProgressEvolutionRepository,
+    ProgressRecordRepository,
+    ProgressTrainerRepository,
+    ProgressService,
+    TrainerProgressService,
   ],
+  exports: [ProgressService, TrainerProgressService],
 })
 export class ProgressModule {}
