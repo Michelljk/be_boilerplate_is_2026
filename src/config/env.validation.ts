@@ -2,6 +2,7 @@ export interface EnvConfig {
   NODE_ENV: string;
   PORT: number;
   DATABASE_URL: string;
+  CORS_ORIGINS: string[];
   JWT_SECRET: string;
   JWT_EXPIRES_IN: number;
   REFRESH_TOKEN_EXPIRES_IN_DAYS: number;
@@ -50,10 +51,32 @@ export function validateEnv(raw: Record<string, unknown>): EnvConfig {
   const nodeEnv = text(raw, 'NODE_ENV', 'development');
   if (!['development', 'test', 'production'].includes(nodeEnv))
     throw new Error('NODE_ENV inválido.');
+  const corsOrigins = text(raw, 'CORS_ORIGINS', 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  for (const origin of corsOrigins) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error(`CORS_ORIGINS contiene un origen inválido: ${origin}.`);
+    }
+    if (
+      !['http:', 'https:'].includes(parsed.protocol) ||
+      parsed.origin !== origin.replace(/\/$/, '') ||
+      parsed.username !== '' ||
+      parsed.password !== ''
+    )
+      throw new Error(
+        `CORS_ORIGINS debe contener orígenes http(s) exactos, sin rutas: ${origin}.`,
+      );
+  }
   return {
     NODE_ENV: nodeEnv,
     PORT: integer(raw, 'PORT', 3000, 1, 65535),
     DATABASE_URL: databaseUrl,
+    CORS_ORIGINS: corsOrigins,
     JWT_SECRET: secret,
     JWT_EXPIRES_IN: seconds,
     REFRESH_TOKEN_EXPIRES_IN_DAYS: integer(
