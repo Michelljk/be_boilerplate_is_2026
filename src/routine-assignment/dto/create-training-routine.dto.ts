@@ -1,10 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -18,6 +19,7 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
+
 
 @ValidatorConstraint({ name: 'calendarDate', async: false })
 export class CalendarDateConstraint implements ValidatorConstraintInterface {
@@ -78,6 +80,18 @@ export class CreateTrainingRoutineDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
   memberId!: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Versión actual esperada para control optimista H26.',
+    example: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  expectedCurrentVersion?: number;
+
 
   @ApiProperty({ minLength: 3, maxLength: 80, example: 'Fuerza tren inferior' })
   @IsString()
