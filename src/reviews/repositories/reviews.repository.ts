@@ -62,6 +62,11 @@ export interface AverageCriteria {
   take: number;
 }
 
+export interface TrainerAverageRange {
+  from: string;
+  to: string;
+}
+
 export interface RowPage<T> {
   rows: T[];
   total: number;
@@ -82,9 +87,6 @@ const REVIEW_FIELDS = {
   comment: true,
   createdAt: true,
 } satisfies Prisma.ReviewSelect;
-// H30 del PDF no restringe el catálogo; se fija mostrar clases vigentes.
-const ACTIVE_CLASS_TEMPLATE_STATUS = 'ACTIVA';
-
 @Injectable()
 export class ReviewsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -177,7 +179,10 @@ export class ReviewsRepository {
    * H30 y la consume `src/reports` para H39. Sin evaluaciones devuelve
    * `averageRating: null`, nunca cero.
    */
-  async trainerAverages(): Promise<
+  async trainerAverages(
+    tx?: Prisma.TransactionClient,
+    range?: TrainerAverageRange,
+  ): Promise<
     Array<{
       trainerId: string;
       name: string;
@@ -186,8 +191,9 @@ export class ReviewsRepository {
     }>
   > {
     const universe = this.universe('trainer');
-    const rated = this.rated('trainer');
-    return this.prisma.$queryRaw<TrainerAverageRow[]>(Prisma.sql`
+    const rated = this.rated('trainer', range);
+    const db = tx ?? this.prisma;
+    return db.$queryRaw<TrainerAverageRow[]>(Prisma.sql`
       WITH entities AS (${universe}),
            scores AS (${rated})
       SELECT
@@ -204,6 +210,9 @@ export class ReviewsRepository {
   }
 
   private eligibleFrom(memberId: string): Prisma.Sql {
+    // H29 menciona sesiones de entrenamiento en el título, pero su modelo
+    // técnico solo define Review→ClassSession; no se amplía aquí a
+    // PersonalSession sin un contrato de datos acordado.
     return Prisma.sql`
       FROM class_sessions cs
       JOIN class_templates ct ON ct.id = cs.class_template_id
@@ -231,17 +240,16 @@ export class ReviewsRepository {
   /**
    * Estado del universo de la tabla de promedios (H30).
    *
-   * Criterio explícito: por clase solo entran plantillas ACTIVA, porque el
-   * reporte mide el catálogo vigente del gimnasio. Por entrenador entran todos
-   * los usuarios con rol ENTRENADOR: las calificaciones históricas de una
-   * cuenta desactivada siguen siendo auditables.
+   * Las plantillas se conservan aunque estén INACTIVAS: sus sesiones
+   * COMPLETADA y evaluaciones son historial auditable y H30 no autoriza
+   * filtrar el catálogo por estado. Por entrenador entran todos los usuarios
+   * con rol ENTRENADOR por la misma razón.
    */
   private universe(groupBy: ReviewGroupBy): Prisma.Sql {
     if (groupBy === 'class') {
       return Prisma.sql`
         SELECT ct.id AS entity_id, ct.name AS name
         FROM class_templates ct
-        WHERE ct.status = ${ACTIVE_CLASS_TEMPLATE_STATUS}::"ClassStatus"
       `;
     }
     return Prisma.sql`
@@ -258,8 +266,14 @@ export class ReviewsRepository {
    * El filtro `rating BETWEEN 1 AND 5` descarta evaluaciones inválidas que
    * hubieran entrado por otra vía; el CHECK de la base es la primera barrera.
    */
-  private rated(groupBy: ReviewGroupBy): Prisma.Sql {
+  private rated(
+    groupBy: ReviewGroupBy,
+    trainerRange?: TrainerAverageRange,
+  ): Prisma.Sql {
     const key = this.groupKey(groupBy);
+    const rangeFilter = trainerRange
+      ? Prisma.sql`AND (cs.starts_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/El_Salvador')::date BETWEEN ${trainerRange.from}::date AND ${trainerRange.to}::date`
+      : Prisma.empty;
     return Prisma.sql`
       SELECT
         ${key} AS entity_id,
@@ -273,6 +287,7 @@ export class ReviewsRepository {
       WHERE cs.status = 'COMPLETADA'::"SessionStatus"
         AND cr.attendance = 'ASISTIO'::"AttendanceStatus"
         AND r.rating BETWEEN 1 AND 5
+        ${rangeFilter}
       GROUP BY ${key}
     `;
   }
