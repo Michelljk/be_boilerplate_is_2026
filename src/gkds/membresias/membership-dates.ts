@@ -1,4 +1,3 @@
-
 export type MembershipPlanType = 'MONTHLY' | 'QUARTERLY' | 'BY_CLASSES';
 
 export interface MembershipDuration {
@@ -24,16 +23,11 @@ export function calculateMembershipPeriod(
   const endsOn = new Date(start);
 
   if (plan.type === 'BY_CLASSES') {
-    if (
-      !Number.isInteger(plan.durationDays) ||
-      (plan.durationDays ?? 0) < 1
-    ) {
+    if (!Number.isInteger(plan.durationDays) || (plan.durationDays ?? 0) < 1) {
       throw new Error('La duración en días debe ser positiva.');
     }
 
-    endsOn.setUTCDate(
-      endsOn.getUTCDate() + (plan.durationDays ?? 0) - 1,
-    );
+    endsOn.setUTCDate(endsOn.getUTCDate() + (plan.durationDays ?? 0) - 1);
   } else {
     if (!['MONTHLY', 'QUARTERLY'].includes(plan.type)) {
       throw new Error('Tipo de plan inválido.');
@@ -46,9 +40,7 @@ export function calculateMembershipPeriod(
       throw new Error('La duración en meses debe ser positiva.');
     }
 
-    endsOn.setUTCMonth(
-      endsOn.getUTCMonth() + (plan.durationMonths ?? 0),
-    );
+    endsOn.setUTCMonth(endsOn.getUTCMonth() + (plan.durationMonths ?? 0));
     endsOn.setUTCDate(endsOn.getUTCDate() - 1);
   }
 
