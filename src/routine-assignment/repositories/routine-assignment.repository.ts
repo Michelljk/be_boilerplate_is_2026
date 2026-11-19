@@ -56,20 +56,30 @@ export class RoutineAssignmentRepository {
         );
       }
 
+
       const currentVersion = await this.latestVersionInTransaction(
         tx,
         data.memberId,
       );
 
-if (
-  data.expectedCurrentVersion !== undefined &&
-  currentVersion !== data.expectedCurrentVersion
-) {
-  throw new DomainError(
-    'CONFLICT',
-    'La versión actual de la rutina no coincide con la versión esperada.',
-  );
-}
+      // H22: detectar cambios concurrentes.
+      if (currentVersion !== observedVersion) {
+        throw new DomainError(
+          'CONFLICT',
+          'La rutina del miembro cambió mientras se procesaba la asignación.',
+        );
+      }
+
+      // H26: validar la versión esperada por el entrenador.
+      if (
+        data.expectedCurrentVersion !== undefined &&
+        currentVersion !== data.expectedCurrentVersion
+      ) {
+        throw new DomainError(
+          'CONFLICT',
+          'La versión actual de la rutina no coincide con la versión esperada.',
+        );
+      }
 
 
       const assignment = await tx.trainerMemberAssignment.findFirst({
