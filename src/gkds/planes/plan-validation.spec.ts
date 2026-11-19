@@ -1,4 +1,3 @@
-
 import { describe, expect, it } from 'vitest';
 import { validatePlanInput, type PlanInput } from './plan-validation.js';
 
@@ -17,9 +16,7 @@ describe('H3 - Validación de planes', () => {
   });
 
   it('rechaza nombres demasiado cortos', () => {
-    expect(() =>
-      validatePlanInput({ ...monthlyPlan, name: 'AB' }),
-    ).toThrow();
+    expect(() => validatePlanInput({ ...monthlyPlan, name: 'AB' })).toThrow();
   });
 
   it('rechaza precios negativos', () => {
