@@ -57,6 +57,7 @@ COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 # El seed (`prisma db seed`) corre con tsx sobre prisma/seed.ts, que importa el
 # cliente generado desde src/, no desde dist/.
 COPY --from=builder /app/src/generated ./src/generated
+COPY --from=builder /app/assets ./assets
 
 # La imagen de Node ya trae el usuario `node` sin privilegios.
 USER node
