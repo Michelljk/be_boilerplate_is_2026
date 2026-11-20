@@ -17,3 +17,6 @@ README.md
 docker-compose.yml
 Dockerfile
 .dockerignore
+
+# Resultados locales de pruebas HTTP
+test-results/

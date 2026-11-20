@@ -48,6 +48,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-7}
       BCRYPT_SALT_ROUNDS: ${BCRYPT_SALT_ROUNDS:-12}
+      CORS_ORIGINS: '${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}'
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-false}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
     ports:
       - '${PORT:-3000}:3000'
     # Aplica las migraciones pendientes antes de levantar el servidor.
