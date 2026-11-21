@@ -8,6 +8,7 @@ import { seedH9 } from './seeds/h9.seed.js';
 import { seedH12 } from './seeds/h12.seed.js';
 import { seedH22 } from './seeds/h22.seed.js';
 import { seedH27 } from './seeds/h27.seed.js';
+import { seedAcceptanceFixtures } from './seeds/acceptance.seed.js';
 
 if (process.env.ALLOW_DEMO_SEED !== 'true')
   throw new Error(
@@ -50,6 +51,8 @@ try {
       await seedH12(ctx);
       await seedH22(ctx);
       await seedH27(ctx);
+      if (process.env.HTTP_TEST_RUN !== 'true')
+        await seedAcceptanceFixtures(ctx);
     },
     { timeout: 60000 },
   );
