@@ -11,7 +11,9 @@ export async function seedH40(ctx: SeedContext): Promise<void> {
   for (const [email, fullName, role] of accounts) {
     const user = await ctx.prisma.user.upsert({
       where: { email },
-      update: {},
+      // Rerunning the demo seed deliberately restores the configured password
+      // for these synthetic accounts without changing their existing profiles.
+      update: { passwordHash: ctx.passwordHash },
       create: {
         email,
         role,
