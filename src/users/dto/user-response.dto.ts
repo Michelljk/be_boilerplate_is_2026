@@ -14,6 +14,9 @@ export class UserResponseDto {
   @ApiProperty({ example: 'nestor@example.com', format: 'email' })
   email!: string;
 
+  @ApiProperty({ enum: ['MIEMBRO', 'ENTRENADOR', 'RECEPCION_ADMIN'] })
+  role!: User['role'];
+
   @ApiProperty()
   isActive!: boolean;
 
@@ -24,6 +27,7 @@ export class UserResponseDto {
     return {
       id: user.id,
       email: user.email,
+      role: user.role,
       isActive: user.isActive,
       createdAt: user.createdAt,
     };

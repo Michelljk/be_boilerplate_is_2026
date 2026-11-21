@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
+import { serializable } from '@Common/repositories';
 import type { RefreshToken, User } from '@PrismaClient';
 
 export interface CreateRefreshTokenData {
@@ -66,6 +67,37 @@ export class RefreshTokenRepository {
         data: { revokedAt: new Date() },
       })
       .then((result) => result.count);
+  }
+
+  /** Consumo y reemplazo atómicos. Bloquea al usuario para serializar reúso y rotación. */
+  async consumeAndReplace(
+    oldHash: string,
+    replacement: CreateRefreshTokenData,
+    now: Date,
+  ): Promise<'ok' | 'invalid' | 'expired' | 'inactive' | 'reused'> {
+    return serializable(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${replacement.userId}::uuid FOR UPDATE`;
+      const stored = await tx.refreshToken.findUnique({
+        where: { tokenHash: oldHash },
+        include: { user: true },
+      });
+      if (!stored || stored.userId !== replacement.userId) return 'invalid';
+      if (stored.revokedAt) {
+        await tx.refreshToken.updateMany({
+          where: { userId: stored.userId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return 'reused';
+      }
+      if (!stored.user.isActive) return 'inactive';
+      if (stored.expiresAt <= now) return 'expired';
+      await tx.refreshToken.update({
+        where: { id: stored.id },
+        data: { revokedAt: now },
+      });
+      await tx.refreshToken.create({ data: replacement });
+      return 'ok';
+    });
   }
 
   /** Utilidad de mantenimiento: limpia tokens vencidos. */

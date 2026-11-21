@@ -1,4 +1,11 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -18,11 +25,6 @@ import type { User } from '@PrismaClient';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * Login. Responde 200 y no 201: no se crea un recurso direccionable, se
-   * devuelve una representación de la sesión. Nest usa 201 por defecto en
-   * POST, de ahí el @HttpCode explícito.
-   */
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -40,7 +42,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renueva el access token rotando el refresh token' })
   @ApiOkResponse({ type: AuthResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Refresh token inválido, expirado o ya utilizado.' })
+  @ApiUnauthorizedResponse({
+    description: 'Refresh token inválido, expirado o ya utilizado.',
+  })
   async refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
     const { user, tokens } = await this.authService.refresh(dto.refreshToken);
     return AuthResponseDto.from(user, tokens);
@@ -61,7 +65,9 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Devuelve el usuario autenticado' })
   @ApiOkResponse({ type: UserResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Token ausente, inválido o expirado.' })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente, inválido o expirado.',
+  })
   me(@CurrentUser() user: User): UserResponseDto {
     return UserResponseDto.fromEntity(user);
   }

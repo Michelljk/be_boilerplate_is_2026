@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import bcrypt from 'bcrypt';
 import { UserRepository } from '@Users/repositories';
@@ -23,11 +27,29 @@ export class UsersService {
     this.saltRounds = configService.get('BCRYPT_SALT_ROUNDS', { infer: true });
   }
 
-  async create({ email, password }: CreateUserDto): Promise<User> {
+  async create({
+    email,
+    password,
+    fullName,
+    phone,
+  }: CreateUserDto): Promise<User> {
+    if (Buffer.byteLength(password, 'utf8') > 72)
+      throw new BadRequestException(
+        'La contraseña no puede superar los 72 bytes.',
+      );
+    if (fullName.trim().length < 3)
+      throw new BadRequestException(
+        'El nombre completo debe tener al menos 3 caracteres.',
+      );
     const passwordHash = await this.hashPassword(password);
 
     try {
-      return await this.userRepository.create({ email, passwordHash });
+      return await this.userRepository.create({
+        email,
+        passwordHash,
+        fullName: fullName.trim(),
+        phone: phone?.trim(),
+      });
     } catch (error) {
       // Traduce el error de dominio del repositorio a una excepción HTTP.
       if (error instanceof EmailAlreadyTakenError) {
